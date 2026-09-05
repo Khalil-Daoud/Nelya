@@ -1,0 +1,570 @@
+/* ==========================================================================
+   NELYA — LUXURY DESIGN SYSTEM
+   --------------------------------------------------------------------------
+   Architecture :
+     1. Design tokens        — couleurs, typographie, espacements, radius,
+                               ombres, transitions
+     2. Reset & base         — éléments HTML, focus, scrollbar
+     3. Typographie          — échelles + utilitaires
+     4. Layout utilities     — conteneurs, grilles, espacements
+     5. Boutons              — surcharge Angular Material (MDC)
+     6. Formulaires          — surcharge des champs Material
+     7. Cartes               — cartes premium + hover
+     8. Badges & statuts     — badges et états de commande
+     9. Tableaux             — tables admin (luxe-table)
+    10. Modales & menus      — dialogs, snackbar
+    11. Skeleton loaders     — états de chargement
+    12. États vides          — empty states
+    13. Animations           — keyframes et utilitaires d'entrée
+    14. Accessibilité        — focus, reduced-motion
+   ========================================================================== */
+
+/* ==========================================================================
+   1. DESIGN TOKENS
+   ========================================================================== */
+:root {
+  /* --- Palette principale (luxe noir / or / blanc) --- */
+  --luxe-black: #0a0a0a;
+  --luxe-charcoal: #1c1c1c;
+  --luxe-grey: #5a5a5a;
+  --luxe-white: #ffffff;
+  --luxe-offwhite: #fafafa;
+  --luxe-light-grey: #f0f0f0;
+  --luxe-gold: #c6a04a;
+  --luxe-gold-hover: #b38d2f;
+  --luxe-gold-soft: rgba(198, 160, 74, 0.14);
+  --luxe-border: rgba(0, 0, 0, 0.08);
+  --luxe-border-strong: rgba(0, 0, 0, 0.14);
+  --luxe-text-muted: #777777;
+
+  /* --- Couleurs sémantiques (statuts, alertes) --- */
+  --luxe-success: #2e7d32;
+  --luxe-success-bg: #e8f5e9;
+  --luxe-info: #1976d2;
+  --luxe-info-bg: #e3f2fd;
+  --luxe-warning: #b26a00;
+  --luxe-warning-bg: #fff8e1;
+  --luxe-danger: #c62828;
+  --luxe-danger-bg: #ffebee;
+
+  /* --- Focus (accessibilité) --- */
+  --luxe-focus: #c6a04a;
+
+  /* --- Typographie --- */
+  --font-heading: 'Playfair Display', serif;
+  --font-body: 'Montserrat', sans-serif;
+  --fs-xs: 0.72rem;
+  --fs-sm: 0.85rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.6rem;
+  --fs-2xl: 2.2rem;
+  --fs-3xl: clamp(2.6rem, 6vw, 4.5rem);
+  --lh-tight: 1.15;
+  --lh-normal: 1.6;
+  --tracking-widest: 0.18em;
+
+  /* --- Espacements (échelle 4px) --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --space-10: 128px;
+
+  /* --- Radius (harmonieux) --- */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 30px;
+  --radius-full: 999px;
+
+  /* --- Ombres --- */
+  --shadow-subtle: 0 6px 24px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.07);
+  --shadow-hover: 0 20px 48px rgba(0, 0, 0, 0.11);
+  --shadow-pop: 0 24px 64px rgba(0, 0, 0, 0.16);
+  --shadow-focus: 0 0 0 4px rgba(198, 160, 74, 0.28);
+
+  /* --- Transitions --- */
+  --transition-smooth: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: all 0.2s ease;
+}
+
+/* ==========================================================================
+   2. RESET & BASE
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 90px;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--luxe-charcoal);
+  background-color: var(--luxe-white);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 16px;
+}
+
+h1, h2, h3, h4, h5, h6, .luxury-title {
+  font-family: var(--font-heading);
+  font-weight: 500;
+  color: var(--luxe-black);
+  letter-spacing: -0.01em;
+  line-height: var(--lh-tight);
+  margin-top: 0;
+}
+
+p { line-height: var(--lh-normal); }
+
+a {
+  color: inherit;
+  text-decoration: none;
+  transition: var(--transition-fast);
+}
+
+img { max-width: 100%; display: block; }
+
+button { font-family: var(--font-body); }
+
+::selection { background: var(--luxe-gold); color: var(--luxe-white); }
+
+/* Focus global (clavier) */
+:focus-visible {
+  outline: 2px solid var(--luxe-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--luxe-offwhite); }
+::-webkit-scrollbar-thumb { background: #d8d8d8; border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--luxe-gold); }
+html { scrollbar-width: thin; scrollbar-color: #d8d8d8 var(--luxe-offwhite); }
+
+/* ==========================================================================
+   3. TYPOGRAPHIE
+   ========================================================================== */
+.display-1 { font-size: var(--fs-3xl); }
+.display-2 { font-size: clamp(2.2rem, 5vw, 3.2rem); }
+.lead { font-size: var(--fs-lg); font-weight: 300; color: var(--luxe-text-muted); }
+.section-kicker {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--luxe-gold);
+  display: block;
+  margin-bottom: var(--space-3);
+}
+.luxury-title { font-size: clamp(2rem, 4vw, 3rem); margin-bottom: var(--space-3); }
+.text-muted { color: var(--luxe-text-muted); }
+.text-center { text-align: center; }
+.uppercase { text-transform: uppercase; letter-spacing: var(--tracking-widest); }
+
+/* ==========================================================================
+   4. LAYOUT UTILITIES
+   ========================================================================== */
+.container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 40px;
+}
+
+.section { padding: var(--space-9) 0; }
+.section-head { margin-bottom: var(--space-7); }
+
+.spacer { flex: 1 1 auto; }
+
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-6); }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-6); }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-6); }
+
+/* Échelle d'espacements utilitaires */
+.mt-1 { margin-top: var(--space-1); } .mb-1 { margin-bottom: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); } .mb-2 { margin-bottom: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); } .mb-3 { margin-bottom: var(--space-3); }
+.mt-4 { margin-top: var(--space-4); } .mb-4 { margin-bottom: var(--space-4); }
+.mt-5 { margin-top: var(--space-5); } .mb-5 { margin-bottom: var(--space-5); }
+.mt-6 { margin-top: var(--space-6); } .mb-6 { margin-bottom: var(--space-6); }
+.mt-7 { margin-top: var(--space-7); } .mb-7 { margin-bottom: var(--space-7); }
+.mt-8 { margin-top: var(--space-8); } .mb-8 { margin-bottom: var(--space-8); }
+
+.divider-gold {
+  width: 48px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--luxe-gold), transparent);
+  border: none;
+  margin: var(--space-4) 0;
+}
+
+/* Carte à effet "verre" (utilisée dans l'admin) */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--luxe-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-subtle);
+}
+
+/* ==========================================================================
+   5. BOUTONS
+   ========================================================================== */
+.mat-mdc-button-base {
+  letter-spacing: 1.5px !important;
+  font-family: var(--font-body) !important;
+  font-weight: 500 !important;
+  transition: var(--transition-smooth) !important;
+  border-radius: var(--radius-full) !important;
+}
+
+/* Bouton primaire (noir → or au survol) */
+.mat-mdc-raised-button.mat-primary {
+  background-color: var(--luxe-black) !important;
+  color: var(--luxe-white) !important;
+  padding: 12px 32px !important;
+  text-transform: uppercase;
+  font-size: 0.8rem !important;
+  letter-spacing: 2px !important;
+  border-radius: var(--radius-full) !important;
+  box-shadow: var(--shadow-card) !important;
+  position: relative;
+  overflow: hidden;
+}
+.mat-mdc-raised-button.mat-primary:hover {
+  background-color: var(--luxe-black) !important;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover) !important;
+}
+.mat-mdc-raised-button.mat-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(198, 160, 74, 0.35), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s ease;
+}
+.mat-mdc-raised-button.mat-primary:hover::after { transform: translateX(100%); }
+.mat-mdc-raised-button.mat-primary:disabled { background-color: #d9d9d9 !important; color: #9a9a9a !important; }
+
+/* Bouton accent (or plein) */
+.mat-mdc-raised-button.mat-accent {
+  background-color: var(--luxe-gold) !important;
+  color: var(--luxe-white) !important;
+  border-radius: var(--radius-full) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+.mat-mdc-raised-button.mat-accent:hover {
+  background-color: var(--luxe-gold-hover) !important;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover) !important;
+}
+
+/* Bouton fantôme (outlined / ghost) */
+.mat-mdc-outlined-button, .mat-stroked-button {
+  border-color: var(--luxe-border-strong) !important;
+  color: var(--luxe-charcoal) !important;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-size: 0.78rem !important;
+  border-radius: var(--radius-full) !important;
+  padding: 10px 28px !important;
+}
+.mat-mdc-outlined-button:hover, .mat-stroked-button:hover {
+  border-color: var(--luxe-black) !important;
+  background: var(--luxe-black) !important;
+  color: var(--luxe-white) !important;
+  transform: translateY(-1px);
+}
+
+/* Boutons icône */
+.mat-mdc-icon-button {
+  transition: var(--transition-smooth) !important;
+  color: var(--luxe-charcoal);
+}
+.mat-mdc-icon-button:hover { background: var(--luxe-gold-soft) !important; color: var(--luxe-gold-hover) !important; }
+.mat-mdc-icon-button[disabled] { opacity: 0.4; }
+
+.mat-mdc-mini-fab {
+  box-shadow: var(--shadow-card) !important;
+  transition: var(--transition-smooth) !important;
+}
+
+/* Bouton texte (liens actions) */
+.mat-mdc-button { border-radius: var(--radius-full) !important; }
+
+/* ==========================================================================
+   6. FORMULAIRES
+   ========================================================================== */
+.mat-mdc-form-field { width: 100%; }
+
+.mdc-text-field--outlined {
+  --mdc-outlined-text-field-outline-color: var(--luxe-border-strong) !important;
+  --mdc-outlined-text-field-hover-outline-color: var(--luxe-black) !important;
+  --mdc-outlined-text-field-focus-outline-color: var(--luxe-gold) !important;
+  --mdc-outlined-text-field-container-shape: var(--radius-md) !important;
+  --mdc-outlined-text-field-outline-width: 1px !important;
+  --mdc-outlined-text-field-focus-outline-width: 2px !important;
+}
+
+.mat-mdc-form-field-focus-overlay { background-color: transparent !important; }
+
+.mat-mdc-text-field-wrapper .mat-mdc-form-field-infix { min-height: 52px; }
+.mat-mdc-form-field .mat-mdc-floating-label.mdc-floating-label { letter-spacing: 0.4px; }
+.mat-mdc-form-field.mat-focused .mat-mdc-floating-label.mdc-floating-label {
+  color: var(--luxe-gold-hover) !important;
+}
+.mat-mdc-form-field-error { font-size: 0.78rem; letter-spacing: 0.3px; }
+
+.mat-mdc-select-arrow { color: var(--luxe-gold-hover); }
+.mat-mdc-option:hover { background: var(--luxe-gold-soft) !important; }
+.mat-mdc-option.mdc-list-item--selected { color: var(--luxe-gold-hover) !important; }
+
+/* Chips de filtre */
+.mat-mdc-chip-listbox .mat-mdc-chip-option {
+  border-radius: var(--radius-full) !important;
+  border: 1px solid var(--luxe-border) !important;
+  background: var(--luxe-white) !important;
+  color: var(--luxe-charcoal) !important;
+  transition: var(--transition-fast) !important;
+  font-size: 0.78rem !important;
+  letter-spacing: 0.6px;
+}
+.mat-mdc-chip-listbox .mat-mdc-chip-option:hover { border-color: var(--luxe-gold) !important; }
+.mat-mdc-chip-listbox .mat-mdc-chip-option.mdc-evolution-chip--selected {
+  background: var(--luxe-black) !important;
+  color: var(--luxe-white) !important;
+  border-color: var(--luxe-black) !important;
+}
+
+/* Slider */
+.mat-mdc-slider {
+  --mdc-slider-handle-color: var(--luxe-black) !important;
+  --mdc-slider-active-track-color: var(--luxe-gold) !important;
+  --mdc-slider-inactive-track-color: var(--luxe-border) !important;
+}
+
+/* ==========================================================================
+   7. CARTES
+   ========================================================================== */
+.mat-mdc-card {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-subtle) !important;
+  border: 1px solid var(--luxe-border);
+  background: var(--luxe-white) !important;
+  transition: var(--transition-smooth) !important;
+}
+.mat-mdc-card:hover { box-shadow: var(--shadow-card) !important; }
+
+.card-hover {
+  transition: var(--transition-smooth) !important;
+  cursor: pointer;
+}
+.card-hover:hover { transform: translateY(-6px); box-shadow: var(--shadow-hover) !important; }
+
+/* ==========================================================================
+   8. BADGES & STATUTS
+   ========================================================================== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: var(--radius-full);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.status-badge { padding: 6px 14px; border-radius: var(--radius-full); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+.status-badge.pending, .status-badge.status-pending { background: var(--luxe-warning-bg); color: var(--luxe-warning); }
+.status-badge.confirmed, .status-badge.status-confirmed { background: var(--luxe-info-bg); color: var(--luxe-info); }
+.status-badge.shipped, .status-badge.status-shipped { background: var(--luxe-success-bg); color: var(--luxe-success); }
+.status-badge.delivered, .status-badge.status-delivered { background: #f3e5f5; color: #7b1fa2; }
+.status-badge.cancelled, .status-badge.status-cancelled { background: var(--luxe-danger-bg); color: var(--luxe-danger); }
+
+.role-pill { padding: 5px 14px; border-radius: var(--radius-full); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+.role-pill.admin { background: var(--luxe-warning-bg); color: var(--luxe-warning); }
+.role-pill.seller { background: var(--luxe-info-bg); color: var(--luxe-info); }
+.role-pill.client { background: var(--luxe-success-bg); color: var(--luxe-success); }
+
+/* ==========================================================================
+   9. TABLEAUX (admin)
+   ========================================================================== */
+.luxe-table {
+  width: 100%;
+  background: transparent;
+  border-collapse: collapse;
+}
+.luxe-table th.mat-header-cell {
+  background: var(--luxe-offwhite) !important;
+  color: var(--luxe-black) !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  font-size: 0.7rem !important;
+  letter-spacing: 1.5px;
+  padding: 16px 20px !important;
+  border-bottom: 1px solid var(--luxe-border);
+}
+.luxe-table td.mat-cell {
+  padding: 16px 20px !important;
+  color: var(--luxe-grey);
+  font-weight: 400;
+  border-bottom: 1px solid var(--luxe-border);
+  font-size: 0.9rem;
+}
+.luxe-table tr.mat-mdc-row { transition: background 0.15s ease; }
+.luxe-table tr.mat-mdc-row:hover { background: var(--luxe-gold-soft); }
+
+/* ==========================================================================
+   10. MODALES & MENUS
+   ========================================================================== */
+.luxury-dialog .mdc-dialog__surface {
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-pop) !important;
+  border: 1px solid var(--luxe-border);
+  overflow: hidden;
+}
+.luxury-dialog .mat-mdc-dialog-title { font-family: var(--font-heading); color: var(--luxe-black); }
+
+.mat-mdc-menu-panel {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-pop) !important;
+  border: 1px solid var(--luxe-border);
+  min-width: 200px !important;
+}
+.mat-mdc-menu-item { font-family: var(--font-body); letter-spacing: 0.4px; }
+.mat-mdc-menu-item:hover { background: var(--luxe-gold-soft) !important; }
+
+/* Snackbar premium */
+.mat-mdc-snack-bar-container .mdc-snackbar__surface {
+  background: var(--luxe-black) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-pop) !important;
+}
+.mat-mdc-snack-bar-container .mdc-snackbar__label { font-family: var(--font-body); letter-spacing: 0.4px; }
+.mat-mdc-snack-bar-container .mat-mdc-snack-bar-action { color: var(--luxe-gold) !important; }
+
+/* Tooltip */
+.mat-mdc-tooltip { font-size: 0.72rem; letter-spacing: 0.4px; }
+
+/* ==========================================================================
+   11. SKELETON LOADERS
+   ========================================================================== */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--luxe-offwhite) 25%, var(--luxe-light-grey) 37%, var(--luxe-offwhite) 63%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+}
+.skeleton-thumb { width: 100%; aspect-ratio: 1 / 1.2; border-radius: var(--radius-md); }
+.skeleton-line { height: 14px; border-radius: var(--radius-full); margin: var(--space-3) 0; }
+.skeleton-line.short { width: 40%; }
+
+/* ==========================================================================
+   12. ÉTATS VIDES
+   ========================================================================== */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+  color: var(--luxe-text-muted);
+  border: 1px dashed var(--luxe-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--luxe-offwhite);
+}
+.empty-state mat-icon {
+  font-size: 3.2rem;
+  width: 56px;
+  height: 56px;
+  color: #d8d8d8;
+}
+.empty-state p { margin: 0; font-size: 0.95rem; }
+
+/* ==========================================================================
+   13. ANIMATIONS
+   ========================================================================== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInLeft {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.fade-in { animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.fade-in-down { animation: fadeInDown 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.fade-in-left { animation: fadeInLeft 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.scale-in { animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* Grille avec apparition en cascade */
+.stagger > * { opacity: 0; animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger > *:nth-child(2) { animation-delay: 0.12s; }
+.stagger > *:nth-child(3) { animation-delay: 0.19s; }
+.stagger > *:nth-child(4) { animation-delay: 0.26s; }
+.stagger > *:nth-child(5) { animation-delay: 0.33s; }
+.stagger > *:nth-child(6) { animation-delay: 0.4s; }
+.stagger > *:nth-child(7) { animation-delay: 0.47s; }
+.stagger > *:nth-child(8) { animation-delay: 0.54s; }
+
+/* ==========================================================================
+   14. ACCESSIBILITÉ — MOUVEMENT RÉDUIT
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .stagger > * { opacity: 1 !important; }
+}
+
+/* ==========================================================================
+   RESPONSIVE — UTILITAIRES GLOBAUX
+   ========================================================================== */
+@media (max-width: 960px) {
+  .container { padding: 0 20px; }
+  .grid-3, .grid-4 { grid-template-columns: 1fr; gap: var(--space-5); }
+  .grid-2 { grid-template-columns: 1fr; }
+  .section { padding: var(--space-7) 0; }
+}
+@media (max-width: 640px) {
+  .grid-3, .grid-4 { grid-template-columns: 1fr; }
+}

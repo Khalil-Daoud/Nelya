@@ -1,0 +1,51 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:15
+    container_name: nelya_db
+    restart: always
+    environment:
+      POSTGRES_USER: nelya_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: nelya_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  backend:
+    build: ../backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=db
+      - DB_USER=nelya_user
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=nelya_db
+      - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ../backend:/app
+      - /app/node_modules
+    depends_on:
+      - db
+
+  frontend:
+    build: ../frontend
+    restart: unless-stopped
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  db_data:

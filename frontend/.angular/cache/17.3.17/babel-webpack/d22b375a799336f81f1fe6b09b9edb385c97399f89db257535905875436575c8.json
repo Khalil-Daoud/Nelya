@@ -1,0 +1,1 @@
+{"ast":null,"code":"export const AUTH_ROUTES = [{\n  path: 'login',\n  loadComponent: () => import('./login/login.component').then(m => m.LoginComponent)\n}, {\n  path: 'register',\n  loadComponent: () => import('./register/register.component').then(m => m.RegisterComponent)\n}];","map":null,"metadata":{},"sourceType":"module","externalDependencies":[]}

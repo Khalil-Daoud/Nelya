@@ -1,0 +1,61 @@
+# ============================================
+# DOCKERFILE DE PRODUCTION - FRONTEND
+# ============================================
+
+# ============================================
+# ÉTAPE 1: Build de l'application Angular
+# ============================================
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+# Copier les fichiers de dépendances
+COPY package*.json ./
+
+# Installer les dépendances
+RUN npm ci && \
+    npm cache clean --force
+
+# Copier le code source
+COPY . .
+
+# Build de production avec optimisations
+RUN npm run build -- --configuration production
+
+# ============================================
+# ÉTAPE 2: Image finale avec Nginx
+# ============================================
+FROM nginx:alpine AS production
+
+# Installer des outils pour le healthcheck
+RUN apk add --no-cache curl
+
+# Copier les fichiers buildés depuis l'étape précédente
+COPY --from=build /app/dist/nelya-frontend /usr/share/nginx/html
+
+# Copier la configuration Nginx de production
+COPY nginx.prod.conf /etc/nginx/conf.d/default.conf
+
+# Supprimer la configuration par défaut de Nginx
+RUN rm -f /etc/nginx/conf.d/default.conf.default
+
+# Créer un utilisateur non-root pour Nginx (sécurité)
+RUN addgroup -g 1001 -S nginx-prod && \
+    adduser -S nginx-prod -u 1001 && \
+    chown -R nginx-prod:nginx-prod /usr/share/nginx/html && \
+    chown -R nginx-prod:nginx-prod /var/cache/nginx && \
+    chown -R nginx-prod:nginx-prod /var/log/nginx && \
+    touch /var/run/nginx.pid && \
+    chown -R nginx-prod:nginx-prod /var/run/nginx.pid
+
+# Modifier la configuration pour exécuter en tant que non-root
+RUN sed -i 's/user  nginx;/user  nginx-prod;/' /etc/nginx/nginx.conf
+
+EXPOSE 80
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:80/ || exit 1
+
+# Démarrer Nginx
+CMD ["nginx", "-g", "daemon off;"]

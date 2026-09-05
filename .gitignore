@@ -1,0 +1,34 @@
+# [BUG-002 FIX] Ne jamais commiter les secrets ou dépendances
+
+# Variables d'environnement (SECRETS)
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Dépendances
+node_modules/
+**/node_modules/
+
+# Build Angular
+frontend/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+docker/postgres-backups/
+docker/nginx/ssl/*.pem
+docker/nginx/logs/
+
+# Uploads (en production)
+backend/src/img/uploads/
