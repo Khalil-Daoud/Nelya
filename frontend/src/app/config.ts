@@ -5,4 +5,4 @@
 // Exemple : 'https://nelya-backend-production.up.railway.app'
 // Une fois le backend déployé, Railway vous donne son URL publique.
 // Collez-la ici, puis redéployez le frontend.
-export const API_BASE_URL = 'https://REMPLACER-PAR-URL-BACKEND-RAILWAY.up.railway.app';
+export const API_BASE_URL = 'https://nelya-production.up.railway.app';
