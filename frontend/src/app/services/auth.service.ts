@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { API_BASE_URL } from '../config';
 
 export interface User {
   id: string;
@@ -14,7 +15,7 @@ export interface User {
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000/api/auth' : '/api/auth';
+  private apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000/api/auth' : `${API_BASE_URL}/api/auth`;
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   public currentUser$ = this.currentUserSubject.asObservable();
 
