@@ -2,28 +2,34 @@ const fetch = global.fetch || require('node-fetch');
 const settingsService = require('./settingsService');
 
 /**
- * Service for sending WhatsApp notifications about new orders.
- * Supports multiple providers via environment configuration:
- *  - CallMeBot (free, simple GET request)
- *  - Twilio WhatsApp API (requires twilio npm package)
- *  - Generic HTTP webhook (any external service)
- * If none are configured, falls back to console logging.
+ * Notifications WhatsApp liées aux commandes.
+ *
+ * Deux usages distincts, qui n'ont pas les mêmes contraintes :
+ *  - La boutique est prévenue sur son propre numéro : CallMeBot (gratuit), Twilio
+ *    ou un webhook suffisent, sinon on écrit la notification dans les logs.
+ *  - Le client reçoit une confirmation sans rien faire : WhatsApp impose un
+ *    fournisseur officiel (Meta Cloud API ou Twilio) car il s'agit d'écrire à un
+ *    numéro qui n'a pas ouvert la conversation. Sans fournisseur, on ne tente rien :
+ *    le site propose alors au client d'envoyer lui-même le récapitulatif.
  */
 class WhatsAppService {
-  constructor() {
-    this.toNumber = process.env.WHATSAPP_TO_NUMBER ?
-      (process.env.WHATSAPP_TO_NUMBER.startsWith('+') ? process.env.WHATSAPP_TO_NUMBER : `+${process.env.WHATSAPP_TO_NUMBER}`)
-      : null;
+  /** Nom affiché du client, qu'il ait un compte ou non */
+  customerName(order) {
+    if (order.User) {
+      return `${order.User.first_name || ''} ${order.User.last_name || ''}`.trim();
+    }
+    return order.guest_name ? `${order.guest_name} (invité)` : 'Client';
   }
 
-  /** Build a human‑readable message for a given order */
+  orderReference(order) {
+    return `#${String(order.id).slice(0, 8)}`;
+  }
+
+  /** Message détaillé destiné à la boutique */
   formatMessage(order, symbol = '€') {
     const lines = [];
-    lines.push(`*Nouvelle commande* #${order.id.slice(0, 8)}`);
-    const customer = order.User
-      ? `${order.User.first_name || ''} ${order.User.last_name || ''}`.trim()
-      : `${order.guest_name || ''} (invité)`;
-    lines.push(`*Client*: ${customer}`);
+    lines.push(`*Nouvelle commande* ${this.orderReference(order)}`);
+    lines.push(`*Client*: ${this.customerName(order)}`);
     lines.push(`*Téléphone*: ${order.phone || order.notes?.match(/Téléphone: ([^|]+)/)?.[1] || ''}`);
     lines.push(`*Adresse*: ${order.shipping_address || ''}`);
     lines.push(`*Total*: ${order.total_amount} ${symbol}`);
@@ -35,65 +41,162 @@ class WhatsAppService {
     return lines.join('\n');
   }
 
-  /** Main entry point – called with a Sequelize Order instance */
+  /** Confirmation courte destinée au client */
+  formatCustomerMessage(order, symbol = '€') {
+    const name = order.User ? order.User.first_name : (order.guest_name || '').split(' ')[0];
+    return [
+      `Bonjour ${name || ''}`.trim() + ',',
+      `Votre commande Nelya ${this.orderReference(order)} est bien enregistrée.`,
+      `Montant : ${order.total_amount} ${symbol}.`,
+      'Nous vous contactons très vite pour la livraison. Merci de votre confiance !'
+    ].join('\n');
+  }
+
+  /** Envoi d'un texte libre via Twilio – renvoie true si l'envoi a réussi */
+  async sendViaTwilio(to, message) {
+    if (!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_FROM)) {
+      return false;
+    }
+    try {
+      const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      await twilio.messages.create({
+        from: process.env.TWILIO_WHATSAPP_FROM,
+        to: `whatsapp:+${to}`,
+        body: message
+      });
+      return true;
+    } catch (e) {
+      console.error('[WhatsApp] Twilio error:', e.message);
+      return false;
+    }
+  }
+
+  /**
+   * Envoi via Meta Cloud API. Un message à l'initiative de la boutique doit utiliser
+   * un modèle validé au préalable par Meta ; ses variables sont passées en paramètres.
+   */
+  async sendTemplateViaCloudApi(to, params) {
+    const token = process.env.WHATSAPP_CLOUD_TOKEN;
+    const phoneId = process.env.WHATSAPP_CLOUD_PHONE_ID;
+    if (!token || !phoneId) return false;
+
+    const template = process.env.WHATSAPP_CLOUD_TEMPLATE || 'order_confirmation';
+    const language = process.env.WHATSAPP_CLOUD_LANG || 'fr';
+
+    try {
+      const res = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to,
+          type: 'template',
+          template: {
+            name: template,
+            language: { code: language },
+            components: [{
+              type: 'body',
+              parameters: params.map(text => ({ type: 'text', text: String(text) }))
+            }]
+          }
+        })
+      });
+      if (!res.ok) {
+        throw new Error(`Cloud API ${res.status}: ${await res.text()}`);
+      }
+      return true;
+    } catch (e) {
+      console.error('[WhatsApp] Cloud API error:', e.message);
+      return false;
+    }
+  }
+
+  /** Prévient la boutique qu'une commande vient d'arriver */
   async sendOrderNotification(order) {
-    if (!this.toNumber) {
-      console.warn('[WhatsApp] WHATSAPP_TO_NUMBER not set – skipping notification');
+    const toNumber = await settingsService.getWhatsAppNumber();
+    if (!toNumber) {
+      console.warn('[WhatsApp] Aucun numéro de boutique configuré – notification ignorée');
       return;
     }
     const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
     const message = this.formatMessage(order, symbol);
 
-    // 1️⃣ CallMeBot (simple GET)
+    // CallMeBot : gratuit, mais n'écrit qu'aux numéros ayant activé le bot.
     if (process.env.CALLMEBOT_API_KEY) {
-      const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(this.toNumber)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(process.env.CALLMEBOT_API_KEY)}`;
+      const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(`+${toNumber}`)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(process.env.CALLMEBOT_API_KEY)}`;
       try {
         const res = await fetch(url);
         if (!res.ok) throw new Error(`CallMeBot responded ${res.status}`);
-        console.log('[WhatsApp] Message sent via CallMeBot');
+        console.log('[WhatsApp] Notification boutique envoyée via CallMeBot');
         return;
       } catch (e) {
-        console.error('[WhatsApp] CallMeBot error:', e);
+        console.error('[WhatsApp] CallMeBot error:', e.message);
       }
     }
 
-    // 2️⃣ Twilio (requires npm package "twilio")
-    if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_FROM) {
-      try {
-        const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-        await twilio.messages.create({
-          from: process.env.TWILIO_WHATSAPP_FROM,
-          to: `whatsapp:${this.toNumber}`,
-          body: message
-        });
-        console.log('[WhatsApp] Message sent via Twilio');
-        return;
-      } catch (e) {
-        console.error('[WhatsApp] Twilio error:', e);
-      }
+    if (await this.sendViaTwilio(toNumber, message)) {
+      console.log('[WhatsApp] Notification boutique envoyée via Twilio');
+      return;
     }
 
-    // 3️⃣ Generic webhook (POST JSON {to, message})
     if (process.env.WHATSAPP_WEBHOOK_URL) {
       try {
         const res = await fetch(process.env.WHATSAPP_WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: this.toNumber, message })
+          body: JSON.stringify({ to: `+${toNumber}`, message })
         });
         if (!res.ok) throw new Error(`Webhook responded ${res.status}`);
-        console.log('[WhatsApp] Message sent via webhook');
+        console.log('[WhatsApp] Notification boutique envoyée via webhook');
         return;
       } catch (e) {
-        console.error('[WhatsApp] Webhook error:', e);
+        console.error('[WhatsApp] Webhook error:', e.message);
       }
     }
 
-    // 4️⃣ Fallback – log to console with clear delimiter
     console.log('---[WhatsApp Notification]---');
-    console.log('To:', this.toNumber);
+    console.log('To:', `+${toNumber}`);
     console.log(message);
     console.log('---[End]---');
+  }
+
+  /**
+   * Confirme la commande au client. Ne fait rien tant que l'admin n'a pas activé
+   * l'option et qu'aucun fournisseur officiel n'est configuré : dans ce cas le
+   * client enverra lui-même le récapitulatif depuis le site.
+   */
+  async sendCustomerConfirmation(order) {
+    const enabled = await settingsService.getNotifyCustomer();
+    if (!enabled || !settingsService.isCustomerProviderConfigured()) return;
+
+    const to = settingsService.normalizeWhatsAppNumber(order.phone);
+    if (!to) {
+      console.warn('[WhatsApp] Téléphone client inexploitable – confirmation ignorée');
+      return;
+    }
+
+    const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
+    const firstName = order.User ? order.User.first_name : (order.guest_name || '').split(' ')[0];
+
+    const sent = await this.sendTemplateViaCloudApi(to, [
+      firstName || 'client',
+      this.orderReference(order),
+      `${order.total_amount} ${symbol}`
+    ]);
+    if (sent) {
+      console.log('[WhatsApp] Confirmation client envoyée via Cloud API');
+      return;
+    }
+
+    if (await this.sendViaTwilio(to, this.formatCustomerMessage(order, symbol))) {
+      console.log('[WhatsApp] Confirmation client envoyée via Twilio');
+      return;
+    }
+
+    console.warn('[WhatsApp] Confirmation client non envoyée (aucun fournisseur disponible)');
   }
 }
 

@@ -23,6 +23,57 @@ export interface CheckoutDialogData {
   guest: boolean;
 }
 
+export interface OrderSuccessDialogData {
+  /** Lien wa.me pré-rempli, vide si la boutique n'a pas de numéro WhatsApp */
+  whatsappLink: string;
+}
+
+@Component({
+  selector: 'app-order-success-dialog',
+  standalone: true,
+  imports: [CommonModule, MatButtonModule, MatIconModule, MatDialogModule],
+  template: `
+    <div class="success-dialog">
+      <div class="success-icon"><mat-icon>check_circle</mat-icon></div>
+      <h2>Commande enregistrée</h2>
+      <p class="lead">Merci ! Votre commande nous est bien parvenue.</p>
+
+      <div *ngIf="data.whatsappLink" class="wa-invite">
+        <p>
+          Dernière étape : envoyez-nous le récapitulatif sur WhatsApp pour que nous
+          puissions confirmer la livraison avec vous. Le message est déjà rédigé,
+          il ne vous reste qu'à appuyer sur « Envoyer ».
+        </p>
+        <a mat-raised-button class="wa-btn" [href]="data.whatsappLink" target="_blank" rel="noopener"
+           (click)="dialogRef.close(true)">
+          <mat-icon>chat</mat-icon> Envoyer sur WhatsApp
+        </a>
+      </div>
+
+      <button mat-button class="later-btn" mat-dialog-close>
+        {{ data.whatsappLink ? 'Plus tard' : 'Fermer' }}
+      </button>
+    </div>
+  `,
+  styles: [`
+    .success-dialog { padding: 36px 32px 24px; text-align: center; max-width: 440px; }
+    .success-icon mat-icon { font-size: 56px; width: 56px; height: 56px; color: #25D366; }
+    h2 { font-family: var(--font-heading); font-size: 1.9rem; color: var(--luxe-black); margin: 14px 0 8px; font-weight: 400; }
+    .lead { color: var(--luxe-text-muted); font-weight: 300; margin: 0 0 24px; }
+    .wa-invite { background: var(--luxe-offwhite); border: 1px solid var(--luxe-border); border-radius: var(--radius-md); padding: 22px 20px; margin-bottom: 14px; }
+    .wa-invite p { font-size: 0.86rem; font-weight: 300; line-height: 1.65; color: var(--luxe-charcoal); margin: 0 0 20px; }
+    .wa-btn { background: #25D366 !important; color: #fff !important; width: 100%; height: 50px; letter-spacing: 1px; font-weight: 500; }
+    .later-btn { color: var(--luxe-text-muted); }
+    @media (max-width: 600px) { .success-dialog { padding: 28px 20px 20px; } }
+  `]
+})
+export class OrderSuccessDialogComponent {
+  constructor(
+    public dialogRef: MatDialogRef<OrderSuccessDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: OrderSuccessDialogData
+  ) {}
+}
+
 @Component({
   selector: 'app-checkout-dialog',
   standalone: true,
@@ -38,7 +89,7 @@ export interface CheckoutDialogData {
           </p>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Nom et prénom</mat-label>
-            <input matInput formControlName="guestName" placeholder="Ex: Khalil Daoud">
+            <input matInput formControlName="guestName" placeholder="Ex: Flen Ben Foulen">
           </mat-form-field>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Email (facultatif)</mat-label>
@@ -288,6 +339,38 @@ export class CartComponent implements OnInit {
     });
   }
 
+  /**
+   * Message WhatsApp pré-rempli que le client envoie lui-même à la boutique.
+   * Rien à construire si le serveur confirme déjà la commande automatiquement.
+   */
+  private buildWhatsAppLink(order: any, form: any, isGuest: boolean): string {
+    const wa = this.settings.whatsapp;
+    if (!wa.number || wa.autoSend) return '';
+
+    const symbol = this.settings.currency.symbol;
+    const amount = (value: any) =>
+      `${Number(value).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${symbol}`;
+
+    const name = isGuest
+      ? form.guestName
+      : `${this.currentUser?.first_name || ''} ${this.currentUser?.last_name || ''}`.trim();
+
+    const lines = [
+      `Bonjour Nelya, je viens de passer la commande #${String(order?.id || '').slice(0, 8)}.`,
+      '',
+      `Nom : ${name}`,
+      `Téléphone : ${form.phone}`,
+      `Adresse : ${form.address}`,
+      '',
+      'Articles :',
+      ...this.items.map(i => `- ${i.name} x${i.quantity} — ${amount(i.price * i.quantity)}`),
+      '',
+      `Total : ${amount(this.total)}`
+    ];
+
+    return `https://wa.me/${wa.number}?text=${encodeURIComponent(lines.join('\n'))}`;
+  }
+
   increase(item: CartItem) {
     this.cartService.addToCart(item);
   }
@@ -335,16 +418,17 @@ export class CartComponent implements OnInit {
         }
 
         this.crudService.create('orders', orderPayload).subscribe({
-          next: () => {
+          next: (order: any) => {
+            // Le récapitulatif doit être construit avant de vider le panier.
+            const whatsappLink = this.buildWhatsAppLink(order, result, isGuest);
             this.cartService.clearCart();
-            this.snackBar.open(
-              isGuest
-                ? 'Votre commande a bien été enregistrée. Nous vous contacterons par téléphone.'
-                : 'Votre commande a été validée avec succès !',
-              'Fermer',
-              { duration: 5000 }
-            );
-            this.router.navigate([isGuest ? '/collection' : '/profile']);
+            this.dialog
+              .open(OrderSuccessDialogComponent, {
+                panelClass: 'luxury-dialog',
+                data: { whatsappLink }
+              })
+              .afterClosed()
+              .subscribe(() => this.router.navigate([isGuest ? '/collection' : '/profile']));
           },
           error: (err) => {
             this.snackBar.open(

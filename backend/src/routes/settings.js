@@ -21,6 +21,12 @@ router.put('/', auth, authorize('admin'), async (req, res) => {
     if (req.body.guestCheckout !== undefined) {
       await settingsService.setGuestCheckout(req.body.guestCheckout === true || req.body.guestCheckout === 'true');
     }
+    if (req.body.whatsappNumber !== undefined) {
+      await settingsService.setWhatsAppNumber(req.body.whatsappNumber);
+    }
+    if (req.body.notifyCustomer !== undefined) {
+      await settingsService.setNotifyCustomer(req.body.notifyCustomer === true || req.body.notifyCustomer === 'true');
+    }
     res.json(await settingsService.getPublicSettings());
   } catch (error) {
     res.status(400).json({ message: error.message });

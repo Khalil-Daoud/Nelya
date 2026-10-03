@@ -92,8 +92,9 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
       ]
     });
 
-    // Send WhatsApp notification (non‑blocking)
+    // Notifications WhatsApp (non bloquantes : une commande reste valide si l'envoi échoue)
     whatsappService.sendOrderNotification(fullOrder).catch(err => console.error('[WhatsApp] send error', err));
+    whatsappService.sendCustomerConfirmation(fullOrder).catch(err => console.error('[WhatsApp] customer send error', err));
 
     return res.status(201).json(fullOrder);
   } catch (err) {
