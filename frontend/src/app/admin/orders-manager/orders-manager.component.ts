@@ -61,8 +61,8 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
             <th mat-header-cell *matHeaderCellDef> Client </th>
             <td mat-cell *matCellDef="let order">
               <div class="cell-user">
-                <div class="cell-avatar">{{(order.User?.first_name || 'C')[0].toUpperCase()}}</div>
-                <span>{{order.User ? (order.User.first_name + ' ' + order.User.last_name) : 'Client Inconnu'}}</span>
+                <div class="cell-avatar">{{(order.User?.first_name || order.guest_name || 'C')[0].toUpperCase()}}</div>
+                <span>{{customerName(order)}}</span>
               </div>
             </td>
           </ng-container>
@@ -99,8 +99,8 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
                 <div class="detail-grid">
                   <div class="detail-block">
                     <h4>Client</h4>
-                    <p><strong>{{order.User ? order.User.first_name + ' ' + order.User.last_name : '—'}}</strong></p>
-                    <p>{{order.User?.email || '—'}}</p>
+                    <p><strong>{{customerName(order)}}</strong></p>
+                    <p>{{customerEmail(order)}}</p>
                   </div>
                   <div class="detail-block">
                     <h4>Livraison</h4>
@@ -237,13 +237,22 @@ export class OrdersManagerComponent implements OnInit {
 
   constructor(private crud: CrudService, private snackBar: MatSnackBar) {}
 
+  customerName(order: any): string {
+    if (order.User) return `${order.User.first_name} ${order.User.last_name}`;
+    return order.guest_name ? `${order.guest_name} (invité)` : 'Client Inconnu';
+  }
+
+  customerEmail(order: any): string {
+    return order.User?.email || order.guest_email || '—';
+  }
+
   get filteredOrders(): any[] {
     const term = this.searchTerm.trim().toLowerCase();
     return this.orders.filter(order => {
       const statusMatch = this.statusFilter === 'all' || order.status === this.statusFilter;
       if (!statusMatch) return false;
       if (!term) return true;
-      const customer = order.User ? `${order.User.first_name} ${order.User.last_name} ${order.User.email}`.toLowerCase() : '';
+      const customer = `${this.customerName(order)} ${this.customerEmail(order)}`.toLowerCase();
       const id = String(order.id).toLowerCase();
       const phone = (order.phone || this.getPhone(order)).toLowerCase();
       return customer.includes(term) || id.includes(term) || phone.includes(term);

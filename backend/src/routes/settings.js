@@ -3,10 +3,10 @@ const router = express.Router();
 const { auth, authorize } = require('../middlewares/auth');
 const settingsService = require('../services/settingsService');
 
-// Paramètres publics de la boutique (devise, etc.)
+// Paramètres publics de la boutique (devise, commande sans compte)
 router.get('/', async (req, res) => {
   try {
-    res.json(await settingsService.getCurrency());
+    res.json(await settingsService.getPublicSettings());
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -15,8 +15,13 @@ router.get('/', async (req, res) => {
 // Mise à jour des paramètres – admin uniquement
 router.put('/', auth, authorize('admin'), async (req, res) => {
   try {
-    const currency = await settingsService.setCurrency(req.body.currency);
-    res.json(currency);
+    if (req.body.currency !== undefined) {
+      await settingsService.setCurrency(req.body.currency);
+    }
+    if (req.body.guestCheckout !== undefined) {
+      await settingsService.setGuestCheckout(req.body.guestCheckout === true || req.body.guestCheckout === 'true');
+    }
+    res.json(await settingsService.getPublicSettings());
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

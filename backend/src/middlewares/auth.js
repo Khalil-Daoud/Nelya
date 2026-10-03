@@ -16,6 +16,22 @@ const auth = (req, res, next) => {
   }
 };
 
+// Laisse passer les requêtes anonymes mais renseigne req.user si un token valide est fourni.
+// Un token présent mais invalide reste une erreur : on ne dégrade pas silencieusement en invité.
+const optionalAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+
+  try {
+    req.user = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: 'Invalid or expired token' });
+  }
+};
+
 const authorize = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
@@ -25,4 +41,4 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = { auth, authorize };
+module.exports = { auth, optionalAuth, authorize };

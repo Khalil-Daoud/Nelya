@@ -20,4 +20,27 @@ async function setCurrency(code) {
   return CURRENCIES[code];
 }
 
-module.exports = { getCurrency, setCurrency, CURRENCIES };
+// Commande sans compte : désactivée par défaut (le client doit se connecter).
+async function getGuestCheckout() {
+  const setting = await Setting.findByPk('guest_checkout');
+  return setting?.value === 'true';
+}
+
+async function setGuestCheckout(enabled) {
+  await Setting.upsert({ key: 'guest_checkout', value: enabled ? 'true' : 'false' });
+  return enabled;
+}
+
+async function getPublicSettings() {
+  const [currency, guestCheckout] = await Promise.all([getCurrency(), getGuestCheckout()]);
+  return { currency, guestCheckout };
+}
+
+module.exports = {
+  getCurrency,
+  setCurrency,
+  getGuestCheckout,
+  setGuestCheckout,
+  getPublicSettings,
+  CURRENCIES
+};

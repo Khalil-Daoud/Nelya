@@ -28,6 +28,15 @@ async function startServer() {
       console.warn('Migration products.reference/contenance skipped:', e.message);
     }
 
+    try {
+      await sequelize.query('ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "guest_name" VARCHAR(255)');
+      await sequelize.query('ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "guest_email" VARCHAR(255)');
+      await sequelize.query('ALTER TABLE "orders" ALTER COLUMN "user_id" DROP NOT NULL');
+      console.log('Schema migration applied (orders.guest_name, orders.guest_email, user_id nullable).');
+    } catch (e) {
+      console.warn('Migration orders.guest_* skipped:', e.message);
+    }
+
     // [BUG-005 FIX] sync({ force: false }) ne modifie jamais les données existantes.
     // En production, utiliser des migrations Sequelize (sequelize-cli).
     await sequelize.sync({ force: false });

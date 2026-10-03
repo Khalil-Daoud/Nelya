@@ -4,6 +4,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatRadioModule } from '@angular/material/radio';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { FormsModule } from '@angular/forms';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { SettingsService, Currency } from '../services/settings.service';
@@ -12,12 +13,12 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
 @Component({
   selector: 'app-admin-settings',
   standalone: true,
-  imports: [CommonModule, MatCardModule, MatButtonModule, MatIconModule, MatRadioModule, FormsModule, MatSnackBarModule, FormatCurrencyPipe],
+  imports: [CommonModule, MatCardModule, MatButtonModule, MatIconModule, MatRadioModule, MatCheckboxModule, FormsModule, MatSnackBarModule, FormatCurrencyPipe],
   template: `
     <div class="settings-container fade-in">
       <div class="header">
         <h2 class="luxury-title">Paramètres de la boutique</h2>
-        <p>Configurez la devise affichée sur tout le site.</p>
+        <p>Configurez la devise et les règles de commande du site.</p>
       </div>
 
       <mat-card class="settings-card glass-panel">
@@ -46,6 +47,26 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
           </button>
         </mat-card-actions>
       </mat-card>
+
+      <mat-card class="settings-card glass-panel">
+        <mat-card-header>
+          <mat-icon mat-card-avatar>how_to_reg</mat-icon>
+          <mat-card-title>Commande sans compte</mat-card-title>
+          <mat-card-subtitle>Choisissez si un client doit créer un compte avant de commander.</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <mat-checkbox [(ngModel)]="guestCheckout" (change)="saveGuestCheckout()" [disabled]="savingGuest" class="guest-toggle">
+            Autoriser les clients à commander sans compte
+          </mat-checkbox>
+          <p class="guest-hint" *ngIf="guestCheckout">
+            Le client renseigne son nom, son téléphone et son adresse au moment de valider.
+            La commande apparaît dans « Commandes » avec la mention « invité ».
+          </p>
+          <p class="guest-hint" *ngIf="!guestCheckout">
+            Le client doit se connecter ou créer un compte avant de valider son panier.
+          </p>
+        </mat-card-content>
+      </mat-card>
     </div>
   `,
   styles: [`
@@ -54,7 +75,7 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
     .header h2 { font-size: 2.5rem; margin-bottom: 10px; }
     .header p { color: #666; font-weight: 300; }
 
-    .settings-card { padding: 25px; border-radius: 12px; max-width: 620px; }
+    .settings-card { padding: 25px; border-radius: 12px; max-width: 620px; margin-bottom: 30px; }
     mat-card-header { margin-bottom: 20px; }
     mat-card-header mat-icon { color: var(--luxe-gold); }
     mat-card-title { font-size: 1.2rem !important; font-weight: 600 !important; }
@@ -70,6 +91,9 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
     .preview-label { font-size: 0.8rem; color: var(--luxe-text-muted); }
     .preview-value { font-size: 1.4rem; font-weight: 700; color: var(--luxe-black); font-family: var(--font-heading); }
 
+    .guest-toggle { font-size: 0.95rem; color: var(--luxe-charcoal); }
+    .guest-hint { margin: 14px 0 0; padding-left: 34px; font-size: 0.82rem; font-weight: 300; color: var(--luxe-text-muted); line-height: 1.6; }
+
     @media (max-width: 768px) {
       .settings-container { padding: 20px; }
     }
@@ -84,6 +108,8 @@ export class AdminSettingsComponent implements OnInit {
   selected = 'EUR';
   current: Currency | null = null;
   saving = false;
+  guestCheckout = false;
+  savingGuest = false;
 
   constructor(private settings: SettingsService, private snackBar: MatSnackBar) {}
 
@@ -91,6 +117,26 @@ export class AdminSettingsComponent implements OnInit {
     this.settings.currency$.subscribe((c: Currency) => {
       this.current = c;
       this.selected = c.code;
+    });
+
+    this.settings.guestCheckout$.subscribe((enabled: boolean) => {
+      this.guestCheckout = enabled;
+    });
+  }
+
+  saveGuestCheckout() {
+    this.savingGuest = true;
+    this.settings.setGuestCheckout(this.guestCheckout).then(enabled => {
+      this.savingGuest = false;
+      this.snackBar.open(
+        enabled ? 'Les clients peuvent commander sans compte' : 'Un compte est désormais requis pour commander',
+        'OK',
+        { duration: 3000 }
+      );
+    }).catch(() => {
+      this.savingGuest = false;
+      this.guestCheckout = this.settings.guestCheckout;
+      this.snackBar.open('Erreur lors de la mise à jour', 'Fermer', { duration: 4000 });
     });
   }
 

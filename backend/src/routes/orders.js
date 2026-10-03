@@ -1,17 +1,43 @@
 const express = require('express');
 const router = express.Router();
-const { auth, authorize } = require('../middlewares/auth');
+const rateLimit = require('express-rate-limit');
+const { auth, optionalAuth, authorize } = require('../middlewares/auth');
 const { Order, OrderItem, Product, User, sequelize } = require('../models');
 const whatsappService = require('../services/whatsappService');
+const settingsService = require('../services/settingsService');
 
-// Create a new order – accessible to any authenticated user (clients, admin, seller)
+// Les commandes invité sont anonymes et décrémentent le stock : on plafonne par IP.
+const guestOrderLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  skip: (req) => Boolean(req.user),
+  message: { message: 'Trop de commandes depuis cette adresse. Réessayez plus tard.' }
+});
+
+// Create a new order – authenticated users, plus guests when the shop allows it.
 // [SEC-FIX] Le montant est calculé côté serveur à partir des prix en base.
 // L'utilisateur est déduit du token (jamais du body). Les items sont créés.
-router.post('/', auth, async (req, res) => {
-  const { items, shipping_address, phone, notes } = req.body;
+router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
+  const { items, shipping_address, phone, notes, guest_name, guest_email } = req.body;
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'Order must contain at least one item' });
   }
+
+  let guest = null;
+  if (!req.user) {
+    if (!(await settingsService.getGuestCheckout())) {
+      return res.status(401).json({ message: 'Veuillez vous connecter pour valider votre commande.' });
+    }
+    const name = String(guest_name || '').trim();
+    if (!name) {
+      return res.status(400).json({ message: 'Le nom est obligatoire pour commander sans compte.' });
+    }
+    if (!String(phone || '').trim()) {
+      return res.status(400).json({ message: 'Le téléphone est obligatoire pour commander sans compte.' });
+    }
+    guest = { name, email: String(guest_email || '').trim() || null };
+  }
+
   try {
     const newOrder = await sequelize.transaction(async (t) => {
       const orderItemsData = [];
@@ -40,7 +66,9 @@ router.post('/', auth, async (req, res) => {
       }
 
       const order = await Order.create({
-        user_id: req.user.id,
+        user_id: req.user ? req.user.id : null,
+        guest_name: guest ? guest.name : null,
+        guest_email: guest ? guest.email : null,
         total_amount: total.toFixed(2),
         shipping_address,
         phone,

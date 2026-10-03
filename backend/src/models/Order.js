@@ -8,9 +8,16 @@ const Order = sequelize.define('Order', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true
   },
+  // Nul pour une commande passée sans compte (voir le paramètre guest_checkout).
   user_id: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: true
+  },
+  guest_name: {
+    type: DataTypes.STRING
+  },
+  guest_email: {
+    type: DataTypes.STRING
   },
   status: {
     type: DataTypes.ENUM('pending', 'confirmed', 'shipped', 'delivered', 'cancelled'),

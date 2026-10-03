@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, Inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CartService, CartItem } from '../services/cart.service';
 import { MatCardModule } from '@angular/material/card';
@@ -9,7 +9,7 @@ import { RouterLink, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { CrudService } from '../services/crud.service';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -17,6 +17,11 @@ import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } 
 import { ImageUrlPipe } from '../pipes/image-url.pipe';
 import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
 import { BreadcrumbComponent } from '../components/breadcrumb/breadcrumb.component';
+import { SettingsService } from '../services/settings.service';
+
+export interface CheckoutDialogData {
+  guest: boolean;
+}
 
 @Component({
   selector: 'app-checkout-dialog',
@@ -26,6 +31,22 @@ import { BreadcrumbComponent } from '../components/breadcrumb/breadcrumb.compone
     <h2 mat-dialog-title class="luxury-title" style="margin-bottom: 20px; text-align: center; font-size: 2rem;">Valider la commande</h2>
     <mat-dialog-content>
       <form [formGroup]="checkoutForm" class="checkout-form">
+        <div *ngIf="data.guest" class="guest-block fade-in">
+          <p class="guest-note">
+            <mat-icon>person_outline</mat-icon>
+            Vous commandez sans compte. Ces informations nous permettent de vous contacter.
+          </p>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Nom et prénom</mat-label>
+            <input matInput formControlName="guestName" placeholder="Ex: Khalil Daoud">
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Email (facultatif)</mat-label>
+            <input matInput type="email" formControlName="guestEmail" placeholder="Ex: client@email.com">
+            <mat-error *ngIf="checkoutForm.get('guestEmail')?.hasError('email')">Email invalide</mat-error>
+          </mat-form-field>
+        </div>
+
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Adresse de livraison complète</mat-label>
           <textarea matInput formControlName="address" rows="3" placeholder="Ex: 123 Avenue Habib Bourguiba, Tunis"></textarea>
@@ -77,6 +98,9 @@ import { BreadcrumbComponent } from '../components/breadcrumb/breadcrumb.compone
     .full-width { width: 100%; margin-bottom: 15px; }
     .card-info { background: var(--luxe-offwhite); padding: 25px 20px 10px 20px; border-radius: var(--radius-md); margin-bottom: 20px; border: 1px solid var(--luxe-border); }
     .card-row { display: flex; gap: 15px; }
+    .guest-block { background: var(--luxe-offwhite); padding: 20px 20px 5px 20px; border-radius: var(--radius-md); margin-bottom: 20px; border: 1px solid var(--luxe-border); }
+    .guest-note { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; font-size: 0.85rem; font-weight: 300; color: var(--luxe-text-muted); line-height: 1.5; }
+    .guest-note mat-icon { font-size: 20px; width: 20px; height: 20px; color: var(--luxe-gold); flex-shrink: 0; }
     @media (max-width: 600px) { .checkout-form { min-width: 100%; } .card-row { flex-direction: column; gap: 0; } }
   `]
 })
@@ -85,9 +109,12 @@ export class CheckoutDialogComponent {
 
   constructor(
     private fb: FormBuilder,
-    public dialogRef: MatDialogRef<CheckoutDialogComponent>
+    public dialogRef: MatDialogRef<CheckoutDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: CheckoutDialogData
   ) {
     this.checkoutForm = this.fb.group({
+      guestName: ['', data.guest ? [Validators.required] : []],
+      guestEmail: ['', [Validators.email]],
       address: ['', Validators.required],
       phone: ['', Validators.required],
       paymentMethod: ['cash', Validators.required],
@@ -234,6 +261,7 @@ export class CartComponent implements OnInit {
   items: CartItem[] = [];
   total = 0;
   currentUser: any = null;
+  guestCheckoutEnabled = false;
 
   constructor(
     private cartService: CartService,
@@ -241,7 +269,8 @@ export class CartComponent implements OnInit {
     private crudService: CrudService,
     private router: Router,
     private snackBar: MatSnackBar,
-    private dialog: MatDialog
+    private dialog: MatDialog,
+    private settings: SettingsService
   ) {}
 
   ngOnInit() {
@@ -252,6 +281,10 @@ export class CartComponent implements OnInit {
 
     this.authService.currentUser$.subscribe(user => {
       this.currentUser = user;
+    });
+
+    this.settings.guestCheckout$.subscribe(enabled => {
+      this.guestCheckoutEnabled = enabled;
     });
   }
 
@@ -269,7 +302,9 @@ export class CartComponent implements OnInit {
   }
 
   checkout() {
-    if (!this.currentUser) {
+    const isGuest = !this.currentUser;
+
+    if (isGuest && !this.guestCheckoutEnabled) {
       this.snackBar.open('Veuillez vous connecter pour valider votre commande.', 'Se Connecter', {
         duration: 5000
       }).onAction().subscribe(() => {
@@ -280,29 +315,43 @@ export class CartComponent implements OnInit {
 
     const dialogRef = this.dialog.open(CheckoutDialogComponent, {
       width: '600px',
-      panelClass: 'luxury-dialog'
+      panelClass: 'luxury-dialog',
+      data: { guest: isGuest }
     });
 
     dialogRef.afterClosed().subscribe(result => {
       if (result) {
         // [SEC-FIX] Le montant est calculé côté serveur. On n'envoie que les items.
-        const orderPayload = {
+        const orderPayload: any = {
           items: this.items.map(i => ({ product_id: i.id, quantity: i.quantity })),
           shipping_address: result.address,
           phone: result.phone,
           notes: `Téléphone: ${result.phone} | Paiement: ${result.paymentMethod === 'card' ? 'Carte Bancaire' : 'Espèces'}`
         };
 
+        if (isGuest) {
+          orderPayload.guest_name = result.guestName;
+          orderPayload.guest_email = result.guestEmail;
+        }
+
         this.crudService.create('orders', orderPayload).subscribe({
           next: () => {
             this.cartService.clearCart();
-            this.snackBar.open('Votre commande a été validée avec succès !', 'Fermer', {
-              duration: 5000
-            });
-            this.router.navigate(['/profile']);
+            this.snackBar.open(
+              isGuest
+                ? 'Votre commande a bien été enregistrée. Nous vous contacterons par téléphone.'
+                : 'Votre commande a été validée avec succès !',
+              'Fermer',
+              { duration: 5000 }
+            );
+            this.router.navigate([isGuest ? '/collection' : '/profile']);
           },
-          error: () => {
-            this.snackBar.open('Erreur lors de la validation de la commande.', 'Fermer', { duration: 4000 });
+          error: (err) => {
+            this.snackBar.open(
+              err?.error?.message || 'Erreur lors de la validation de la commande.',
+              'Fermer',
+              { duration: 4000 }
+            );
           }
         });
       }

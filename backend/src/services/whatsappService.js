@@ -20,8 +20,11 @@ class WhatsAppService {
   formatMessage(order, symbol = '€') {
     const lines = [];
     lines.push(`*Nouvelle commande* #${order.id.slice(0, 8)}`);
-    lines.push(`*Client*: ${order.User?.first_name || ''} ${order.User?.last_name || ''}`);
-    lines.push(`*Téléphone*: ${order.notes?.match(/Téléphone: ([^|]+)/)?.[1] || ''}`);
+    const customer = order.User
+      ? `${order.User.first_name || ''} ${order.User.last_name || ''}`.trim()
+      : `${order.guest_name || ''} (invité)`;
+    lines.push(`*Client*: ${customer}`);
+    lines.push(`*Téléphone*: ${order.phone || order.notes?.match(/Téléphone: ([^|]+)/)?.[1] || ''}`);
     lines.push(`*Adresse*: ${order.shipping_address || ''}`);
     lines.push(`*Total*: ${order.total_amount} ${symbol}`);
     lines.push('\n*Articles:*');
