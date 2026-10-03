@@ -32,6 +32,9 @@ app.use('/img', express.static(path.join(__dirname, 'img')));
 // Upload d'images (produits) – admin & employés
 app.use('/api/uploads', require('./routes/uploads'));
 
+// Import CSV de produits – doit être monté avant le routeur dynamique
+app.use('/api/products', require('./routes/productImport'));
+
 // Routes Dynamiques
 app.use('/api/products', createDynamicRouter('Product'));
 app.use('/api/categories', createDynamicRouter('Category'));

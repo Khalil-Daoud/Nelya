@@ -42,13 +42,75 @@ import { PaginationComponent } from '../../components/pagination/pagination.comp
     <div class="manager-container">
       <div class="header">
         <h2>Gestion des Produits</h2>
-        <button mat-raised-button color="primary" (click)="toggleForm()" *ngIf="!showForm">
-          <mat-icon>add</mat-icon> Ajouter un produit
-        </button>
-        <button mat-raised-button color="accent" (click)="toggleForm()" *ngIf="showForm">
-          <mat-icon>close</mat-icon> Annuler
-        </button>
+        <div class="header-actions">
+          <button mat-stroked-button color="primary" (click)="toggleImport()" *ngIf="!showForm">
+            <mat-icon>upload_file</mat-icon> {{ showImport ? 'Fermer' : 'Importer un CSV' }}
+          </button>
+          <button mat-raised-button color="primary" (click)="toggleForm()" *ngIf="!showForm">
+            <mat-icon>add</mat-icon> Ajouter un produit
+          </button>
+          <button mat-raised-button color="accent" (click)="toggleForm()" *ngIf="showForm">
+            <mat-icon>close</mat-icon> Annuler
+          </button>
+        </div>
       </div>
+
+      <!-- Import CSV / Excel -->
+      <mat-card class="form-card fade-in" *ngIf="showImport && !showForm">
+        <mat-card-header>
+          <mat-card-title>Importer des produits depuis un fichier CSV</mat-card-title>
+        </mat-card-header>
+        <mat-card-content>
+          <p class="import-help">
+            Colonnes attendues :
+            <code>Ref</code>, <code>Catégorie</code>, <code>Désignation</code>,
+            <code>Contenance</code>, <code>Prix</code>, <code>Image</code>
+            (colonnes <code>Stock</code> et <code>Description</code> facultatives).
+            Dans Excel : <em>Fichier → Enregistrer sous → CSV UTF-8</em>.
+          </p>
+          <ul class="import-rules">
+            <li>Les catégories absentes sont créées automatiquement.</li>
+            <li>Une ligne dont la <strong>Ref</strong> existe déjà met le produit à jour au lieu de le dupliquer.</li>
+            <li>La colonne <strong>Image</strong> accepte une URL complète ou le nom d'un fichier déjà envoyé.</li>
+          </ul>
+
+          <div class="import-actions">
+            <mat-form-field appearance="outline" class="stock-field">
+              <mat-label>Stock par défaut</mat-label>
+              <input matInput type="number" min="0" [(ngModel)]="defaultStock" [ngModelOptions]="{ standalone: true }">
+              <mat-hint>Appliqué aux nouveaux produits sans colonne Stock</mat-hint>
+            </mat-form-field>
+
+            <input type="file" hidden #csvInput accept=".csv,text/csv" (change)="onCsvSelected($event)">
+            <button mat-flat-button color="primary" [disabled]="importing" (click)="csvInput.click()">
+              <mat-icon>upload_file</mat-icon>
+              {{ importing ? 'Import en cours…' : 'Choisir un fichier CSV' }}
+            </button>
+            <mat-spinner *ngIf="importing" diameter="24"></mat-spinner>
+            <button mat-stroked-button (click)="downloadTemplate()">
+              <mat-icon>download</mat-icon> Télécharger un modèle
+            </button>
+          </div>
+
+          <div class="import-report" *ngIf="importReport">
+            <p class="report-summary">
+              <strong>{{ importReport.created }}</strong> produit(s) créé(s) ·
+              <strong>{{ importReport.updated }}</strong> mis à jour ·
+              <strong>{{ importReport.skipped }}</strong> ignoré(s)
+              sur {{ importReport.total }} ligne(s).
+            </p>
+            <p *ngIf="importReport.categoriesCreated?.length">
+              Catégories créées : {{ importReport.categoriesCreated.join(', ') }}
+            </p>
+            <div class="report-errors" *ngIf="importReport.errors?.length">
+              <p>Lignes ignorées :</p>
+              <ul>
+                <li *ngFor="let e of importReport.errors">Ligne {{ e.line }} — {{ e.message }}</li>
+              </ul>
+            </div>
+          </div>
+        </mat-card-content>
+      </mat-card>
 
       <!-- Formulaire d'édition / création -->
       <mat-card class="form-card fade-in" *ngIf="showForm">
@@ -59,8 +121,18 @@ import { PaginationComponent } from '../../components/pagination/pagination.comp
           <form [formGroup]="productForm" (ngSubmit)="saveProduct()">
             <div class="form-grid">
               <mat-form-field appearance="outline">
+                <mat-label>Référence</mat-label>
+                <input matInput formControlName="reference" placeholder="ex: NEL-001">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
                 <mat-label>Nom du produit</mat-label>
                 <input matInput formControlName="name" placeholder="ex: Crème de Nuit">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Contenance</mat-label>
+                <input matInput formControlName="contenance" placeholder="ex: 50 ml">
               </mat-form-field>
 
               <mat-form-field appearance="outline">
@@ -139,9 +211,19 @@ import { PaginationComponent } from '../../components/pagination/pagination.comp
             <td mat-cell *matCellDef="let p"> <img [src]="p.image_url | imageUrl" class="thumb"> </td>
           </ng-container>
 
+          <ng-container matColumnDef="reference">
+            <th mat-header-cell *matHeaderCellDef> Réf. </th>
+            <td mat-cell *matCellDef="let p"> {{p.reference || '—'}} </td>
+          </ng-container>
+
           <ng-container matColumnDef="name">
             <th mat-header-cell *matHeaderCellDef> Nom </th>
             <td mat-cell *matCellDef="let p"> {{p.name}} </td>
+          </ng-container>
+
+          <ng-container matColumnDef="contenance">
+            <th mat-header-cell *matHeaderCellDef> Contenance </th>
+            <td mat-cell *matCellDef="let p"> {{p.contenance || '—'}} </td>
           </ng-container>
 
           <ng-container matColumnDef="price">
@@ -195,12 +277,22 @@ import { PaginationComponent } from '../../components/pagination/pagination.comp
     .result-count { color: var(--luxe-text-muted); font-size: 0.85rem; }
     .empty-state { text-align: center; padding: 60px 20px; color: var(--luxe-text-muted); }
     .empty-state mat-icon { font-size: 3rem; width: 48px; height: 48px; margin-bottom: 12px; }
+    .header-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+    .import-help { color: var(--luxe-text-muted); font-size: 0.9rem; line-height: 1.7; }
+    .import-help code { background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; }
+    .import-rules { color: var(--luxe-text-muted); font-size: 0.85rem; line-height: 1.8; margin: 0 0 18px; padding-left: 20px; }
+    .import-actions { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .stock-field { width: 200px; }
+    .import-report { margin-top: 24px; padding: 16px; border-radius: 10px; border: 1px solid var(--luxe-border); }
+    .report-summary { margin: 0 0 8px; }
+    .report-errors { margin-top: 12px; color: var(--luxe-crimson); font-size: 0.85rem; }
+    .report-errors ul { margin: 6px 0 0; padding-left: 20px; line-height: 1.7; }
   `]
 })
 export class ProductsManagerComponent implements OnInit {
   products: any[] = [];
   categories: any[] = [];
-  displayedColumns = ['image', 'name', 'price', 'stock', 'actions'];
+  displayedColumns = ['image', 'reference', 'name', 'contenance', 'price', 'stock', 'actions'];
   searchTerm = '';
   categoryFilter: string = 'all';
   pageIndex = 0;
@@ -212,7 +304,9 @@ export class ProductsManagerComponent implements OnInit {
       const catMatch = this.categoryFilter === 'all' || p.category === this.categoryFilter;
       if (!catMatch) return false;
       if (!term) return true;
-      return p.name.toLowerCase().includes(term) || (p.category || '').toLowerCase().includes(term);
+      return p.name.toLowerCase().includes(term)
+        || (p.category || '').toLowerCase().includes(term)
+        || (p.reference || '').toLowerCase().includes(term);
     });
   }
 
@@ -229,6 +323,11 @@ export class ProductsManagerComponent implements OnInit {
   editingProductId: string | null = null;
   uploading = false;
   imagePreview = '';
+
+  showImport = false;
+  importing = false;
+  defaultStock = 100;
+  importReport: any = null;
 
   constructor(
     private crud: CrudService, 
@@ -252,6 +351,8 @@ export class ProductsManagerComponent implements OnInit {
 
   initForm() {
     this.productForm = this.fb.group({
+      reference: [''],
+      contenance: [''],
       name: ['', Validators.required],
       category: ['', Validators.required],
       price: ['', [Validators.required, Validators.min(0)]],
@@ -294,6 +395,58 @@ export class ProductsManagerComponent implements OnInit {
     this.crud.getAll<any>('products').subscribe(data => this.products = data);
   }
 
+  toggleImport() {
+    this.showImport = !this.showImport;
+    if (!this.showImport) this.importReport = null;
+  }
+
+  onCsvSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('default_stock', String(this.defaultStock ?? 0));
+
+    this.importing = true;
+    this.importReport = null;
+    this.api.post<any>('products/import', formData).subscribe({
+      next: (report) => {
+        this.importing = false;
+        this.importReport = report;
+        this.loadProducts();
+        this.loadCategories();
+        this.snackBar.open(
+          `${report.created} produit(s) créé(s), ${report.updated} mis à jour`,
+          'OK',
+          { duration: 4000 }
+        );
+      },
+      error: (err) => {
+        this.importing = false;
+        const msg = err?.error?.message || "Erreur lors de l'import du fichier";
+        this.snackBar.open(msg, 'Fermer', { duration: 6000 });
+      }
+    });
+    input.value = '';
+  }
+
+  downloadTemplate() {
+    const rows = [
+      'Ref;Categorie;Designation;Contenance;Prix;Image;Stock',
+      'NEL-001;Soins Visage;Crème de Nuit Régénérante;50 ml;89,900;https://exemple.com/creme.jpg;25',
+      'NEL-002;Parfums;Eau de Parfum Oud;100 ml;149,000;parfum-oud.jpg;10'
+    ];
+    const blob = new Blob(['\ufeff' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'modele-import-produits.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   toggleForm() {
     this.showForm = !this.showForm;
     if (!this.showForm) {
@@ -310,6 +463,8 @@ export class ProductsManagerComponent implements OnInit {
     this.showForm = true;
     this.imagePreview = product.image_url;
     this.productForm.patchValue({
+      reference: product.reference,
+      contenance: product.contenance,
       name: product.name,
       category: product.category,
       price: product.price,

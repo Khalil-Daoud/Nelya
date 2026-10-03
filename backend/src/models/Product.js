@@ -7,9 +7,15 @@ const Product = sequelize.define('Product', {
     defaultValue: DataTypes.UUIDV4,
     primaryKey: true
   },
+  reference: {
+    type: DataTypes.STRING
+  },
   name: {
     type: DataTypes.STRING,
     allowNull: false
+  },
+  contenance: {
+    type: DataTypes.STRING
   },
   description: {
     type: DataTypes.TEXT

@@ -7,7 +7,7 @@ const { auth, authorize } = require('../middlewares/auth');
 const MODEL_CONFIG = {
   Product: {
     publicRead: true,
-    writeFields: ['name', 'description', 'price', 'stock', 'image_url', 'category'],
+    writeFields: ['reference', 'name', 'contenance', 'description', 'price', 'stock', 'image_url', 'category'],
   },
   Category: {
     publicRead: true,
