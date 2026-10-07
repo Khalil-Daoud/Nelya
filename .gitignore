@@ -48,3 +48,10 @@ docker/nginx/logs/
 
 # Uploads (en production)
 backend/src/img/uploads/
+
+# Audits et checklists internes (détails d'infra / failles)
+PRODUCTION-AUDIT.md
+SECURITY-CHECKLIST.md
+ISSUES.md
+DEPLOYMENT-GUIDE.md
+README-PRODUCTION.md
