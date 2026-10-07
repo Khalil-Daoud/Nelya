@@ -26,6 +26,8 @@ export interface OrderSuccessDialogData {
   /** Lien wa.me pré-rempli, vide si la boutique n'a pas de numéro WhatsApp */
   whatsappLink: string;
   pointsAwarded?: number;
+  trackingUrl?: string;
+  emailed?: boolean;
 }
 
 @Component({
@@ -40,6 +42,14 @@ export interface OrderSuccessDialogData {
       <p class="points-won" *ngIf="data.pointsAwarded">
         Vous avez gagné <strong>{{ data.pointsAwarded }} point{{ data.pointsAwarded > 1 ? 's' : '' }}</strong> fidélité.
       </p>
+      <p class="mail-note" *ngIf="data.trackingUrl">
+        Un récapitulatif (numéro, détail et lien de suivi) part vers votre email.
+        Conservez aussi le lien ci-dessous : le statut s’y met à jour.
+      </p>
+
+      <a *ngIf="data.trackingUrl" mat-stroked-button class="track-btn" [href]="data.trackingUrl">
+        <mat-icon>local_shipping</mat-icon> Voir ma commande
+      </a>
 
       <div *ngIf="data.whatsappLink" class="wa-invite">
         <p>
@@ -62,7 +72,9 @@ export interface OrderSuccessDialogData {
     .success-dialog { padding: 36px 32px 24px; text-align: center; max-width: 440px; }
     .success-icon mat-icon { font-size: 56px; width: 56px; height: 56px; color: #25D366; }
     h2 { font-family: var(--font-heading); font-size: 1.9rem; color: var(--luxe-black); margin: 14px 0 8px; font-weight: 400; }
-    .lead { color: var(--luxe-text-muted); font-weight: 300; margin: 0 0 24px; }
+    .lead { color: var(--luxe-text-muted); font-weight: 300; margin: 0 0 16px; }
+    .mail-note { color: var(--luxe-charcoal); font-size: 0.88rem; font-weight: 300; line-height: 1.6; margin: 0 0 18px; }
+    .track-btn { width: 100%; margin-bottom: 16px; height: 48px; }
     .points-won { color: var(--luxe-charcoal); font-size: 0.95rem; margin: -10px 0 22px; }
     .points-won strong { color: var(--luxe-gold); }
     .wa-invite { background: var(--luxe-offwhite); border: 1px solid var(--luxe-border); border-radius: var(--radius-md); padding: 22px 20px; margin-bottom: 14px; }
@@ -90,15 +102,16 @@ export class OrderSuccessDialogComponent {
         <div *ngIf="data.guest" class="guest-block fade-in">
           <p class="guest-note">
             <mat-icon>person_outline</mat-icon>
-            Vous commandez sans compte. Ces informations nous permettent de vous contacter.
+            Vous commandez sans compte. L’email sert à vous envoyer le n° de commande et le lien de suivi.
           </p>
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Nom et prénom</mat-label>
             <input matInput formControlName="guestName" placeholder="Ex: Flen Ben Foulen">
           </mat-form-field>
           <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Email (facultatif)</mat-label>
+            <mat-label>Email</mat-label>
             <input matInput type="email" formControlName="guestEmail" placeholder="Ex: client@email.com">
+            <mat-error *ngIf="checkoutForm.get('guestEmail')?.hasError('required')">Obligatoire pour le suivi</mat-error>
             <mat-error *ngIf="checkoutForm.get('guestEmail')?.hasError('email')">Email invalide</mat-error>
           </mat-form-field>
         </div>
@@ -146,7 +159,7 @@ export class CheckoutDialogComponent {
   ) {
     this.checkoutForm = this.fb.group({
       guestName: ['', data.guest ? [Validators.required] : []],
-      guestEmail: ['', [Validators.email]],
+      guestEmail: ['', data.guest ? [Validators.required, Validators.email] : [Validators.email]],
       address: ['', Validators.required],
       phone: ['', Validators.required]
     });
@@ -409,14 +422,26 @@ export class CartComponent implements OnInit {
               this.authService.refreshMe();
             }
             const whatsappLink = this.buildWhatsAppLink(order, result, isGuest);
+            const trackingUrl = order?.tracking_url || (order?.public_token ? `/commande/${order.public_token}` : '');
             this.cartService.clearCart();
             this.dialog
               .open(OrderSuccessDialogComponent, {
                 panelClass: 'luxury-dialog',
-                data: { whatsappLink, pointsAwarded }
+                data: {
+                  whatsappLink,
+                  pointsAwarded,
+                  trackingUrl,
+                  emailed: isGuest && Boolean(result.guestEmail)
+                }
               })
               .afterClosed()
-              .subscribe(() => this.router.navigate([isGuest ? '/collection' : '/profile']));
+              .subscribe(() => {
+                if (isGuest && order?.public_token) {
+                  this.router.navigate(['/commande', order.public_token]);
+                } else {
+                  this.router.navigate([isGuest ? '/collection' : '/profile']);
+                }
+              });
           },
           error: (err) => {
             this.snackBar.open(

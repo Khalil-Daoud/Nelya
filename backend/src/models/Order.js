@@ -19,6 +19,10 @@ const Order = sequelize.define('Order', {
   guest_email: {
     type: DataTypes.STRING
   },
+  public_token: {
+    type: DataTypes.STRING(64),
+    unique: true
+  },
   status: {
     type: DataTypes.ENUM('pending', 'confirmed', 'shipped', 'delivered', 'cancelled'),
     defaultValue: 'pending'

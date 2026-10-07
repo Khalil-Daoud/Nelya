@@ -1,5 +1,6 @@
 const fetch = global.fetch || require('node-fetch');
 const settingsService = require('./settingsService');
+const { orderReference, customerFirstName, statusLabel } = require('../utils/orderPublic');
 
 /**
  * Notifications WhatsApp liées aux commandes.
@@ -22,7 +23,7 @@ class WhatsAppService {
   }
 
   orderReference(order) {
-    return `#${String(order.id).slice(0, 8)}`;
+    return orderReference(order);
   }
 
   /** Message détaillé destiné à la boutique */
@@ -42,14 +43,31 @@ class WhatsAppService {
   }
 
   /** Confirmation courte destinée au client */
-  formatCustomerMessage(order, symbol = '€') {
-    const name = order.User ? order.User.first_name : (order.guest_name || '').split(' ')[0];
-    return [
+  formatCustomerMessage(order, symbol = '€', trackingLink = '') {
+    const name = customerFirstName(order);
+    const lines = [
       `Bonjour ${name || ''}`.trim() + ',',
       `Votre commande Nelya ${this.orderReference(order)} est bien enregistrée.`,
-      `Montant : ${order.total_amount} ${symbol}.`,
-      'Nous vous contactons très vite pour la livraison. Merci de votre confiance !'
-    ].join('\n');
+      `Montant : ${order.total_amount} ${symbol}.`
+    ];
+    (order.items || []).forEach((item) => {
+      const productName = item.Product?.name || 'Produit';
+      lines.push(`- ${productName} x${item.quantity}`);
+    });
+    if (trackingLink) {
+      lines.push('', `Suivre la commande : ${trackingLink}`);
+    }
+    lines.push('', 'Nous vous contactons très vite pour la livraison. Merci de votre confiance !');
+    return lines.join('\n');
+  }
+
+  formatStatusMessage(order, symbol = '€', trackingLink = '') {
+    const name = customerFirstName(order);
+    return [
+      `Bonjour ${name || ''}`.trim() + ',',
+      `Votre commande Nelya ${this.orderReference(order)} est maintenant : ${statusLabel(order.status)}.`,
+      trackingLink ? `Détails : ${trackingLink}` : ''
+    ].filter(Boolean).join('\n');
   }
 
   /** Envoi d'un texte libre via Twilio – renvoie true si l'envoi a réussi */
@@ -168,35 +186,63 @@ class WhatsAppService {
    * l'option et qu'aucun fournisseur officiel n'est configuré : dans ce cas le
    * client enverra lui-même le récapitulatif depuis le site.
    */
-  async sendCustomerConfirmation(order) {
-    const enabled = await settingsService.getNotifyCustomer();
-    if (!enabled || !settingsService.isCustomerProviderConfigured()) return;
-
+  async sendToCustomer(order, message, templateParams) {
     const to = settingsService.normalizeWhatsAppNumber(order.phone);
     if (!to) {
       console.warn('[WhatsApp] Téléphone client inexploitable – confirmation ignorée');
-      return;
+      return false;
     }
+
+    if (await this.sendTemplateViaCloudApi(to, templateParams)) {
+      console.log('[WhatsApp] Message client envoyé via Cloud API');
+      return true;
+    }
+
+    if (await this.sendViaTwilio(to, message)) {
+      console.log('[WhatsApp] Message client envoyé via Twilio');
+      return true;
+    }
+
+    return false;
+  }
+
+  async sendCustomerConfirmation(order, trackingLink = '') {
+    const enabled = await settingsService.getNotifyCustomer();
+    if (!enabled || !settingsService.isCustomerProviderConfigured()) return false;
 
     const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
-    const firstName = order.User ? order.User.first_name : (order.guest_name || '').split(' ')[0];
+    const firstName = customerFirstName(order);
 
-    const sent = await this.sendTemplateViaCloudApi(to, [
-      firstName || 'client',
-      this.orderReference(order),
-      `${order.total_amount} ${symbol}`
-    ]);
-    if (sent) {
-      console.log('[WhatsApp] Confirmation client envoyée via Cloud API');
-      return;
+    const sent = await this.sendToCustomer(
+      order,
+      this.formatCustomerMessage(order, symbol, trackingLink),
+      [
+        firstName || 'client',
+        this.orderReference(order),
+        `${order.total_amount} ${symbol}`
+      ]
+    );
+    if (!sent) {
+      console.warn('[WhatsApp] Confirmation client non envoyée (aucun fournisseur disponible)');
     }
+    return sent;
+  }
 
-    if (await this.sendViaTwilio(to, this.formatCustomerMessage(order, symbol))) {
-      console.log('[WhatsApp] Confirmation client envoyée via Twilio');
-      return;
-    }
+  async sendCustomerStatus(order, trackingLink = '') {
+    if (!settingsService.isCustomerProviderConfigured()) return false;
+    const enabled = await settingsService.getNotifyCustomer();
+    if (!enabled) return false;
 
-    console.warn('[WhatsApp] Confirmation client non envoyée (aucun fournisseur disponible)');
+    const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
+    return this.sendToCustomer(
+      order,
+      this.formatStatusMessage(order, symbol, trackingLink),
+      [
+        customerFirstName(order) || 'client',
+        this.orderReference(order),
+        statusLabel(order.status)
+      ]
+    );
   }
 }
 

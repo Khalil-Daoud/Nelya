@@ -8,6 +8,7 @@ const { Op } = require('sequelize');
 const { auth, authorize } = require('../middlewares/auth');
 const { Product, Category } = require('../models');
 const { parseCsv, normalizeHeader, parsePrice } = require('../utils/csv');
+const { parseSpreadsheet } = require('../utils/spreadsheet');
 
 const router = express.Router();
 
@@ -21,8 +22,8 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (!['.csv', '.txt', '.zip'].includes(ext)) {
-      return cb(new Error('Envoyez un CSV, ou un ZIP contenant le CSV et les photos.'));
+    if (!['.csv', '.txt', '.zip', '.xlsx', '.xls'].includes(ext)) {
+      return cb(new Error('Envoyez un CSV, un Excel (.xlsx) ou un ZIP (fichier + photos).'));
     }
     cb(null, true);
   }
@@ -79,26 +80,46 @@ async function savePackedImage(buffer) {
   return `/img/${filename}`;
 }
 
+function isTableFile(name, zipEntry) {
+  if (zipEntry && zipEntry.dir) return false;
+  return /\.(csv|txt|xlsx|xls)$/i.test(name);
+}
+
+function tableFileInZip(zip) {
+  const names = Object.keys(zip.files);
+  const pick = (re) => names.find((n) => re.test(n) && !zip.files[n].dir);
+  return pick(/\.csv$/i) || pick(/\.xlsx$/i) || pick(/\.xls$/i) || pick(/\.txt$/i);
+}
+
+function parseTable(buffer, sourceExt) {
+  if (sourceExt === '.xlsx' || sourceExt === '.xls') {
+    return parseSpreadsheet(buffer);
+  }
+  return parseCsv(buffer.toString('utf8')).rows;
+}
+
 async function unpackImport(file) {
   const ext = path.extname(file.originalname).toLowerCase();
   if (ext !== '.zip') {
-    return { csvBuffer: file.buffer, packedImages: new Map() };
+    return { tableBuffer: file.buffer, packedImages: new Map(), sourceExt: ext };
   }
 
   const zip = await JSZip.loadAsync(file.buffer);
-  const names = Object.keys(zip.files);
-  const csvName = names.find((n) => /\.csv$/i.test(n) && !zip.files[n].dir);
-  if (!csvName) {
-    throw Object.assign(new Error('Le ZIP doit contenir un fichier .csv.'), { status: 400 });
+  const tableName = tableFileInZip(zip);
+  if (!tableName) {
+    throw Object.assign(
+      new Error('Le ZIP doit contenir un fichier CSV ou Excel (.xlsx).'),
+      { status: 400 }
+    );
   }
 
-  const csvBuffer = await zip.files[csvName].async('nodebuffer');
+  const tableBuffer = await zip.files[tableName].async('nodebuffer');
   const packedImages = new Map();
   let saved = 0;
 
-  for (const name of names) {
+  for (const name of Object.keys(zip.files)) {
     const entry = zip.files[name];
-    if (entry.dir) continue;
+    if (entry.dir || isTableFile(name, entry)) continue;
     const imageExt = path.extname(name).toLowerCase();
     if (!IMAGE_EXTS.has(imageExt)) continue;
     if (saved >= MAX_ZIP_IMAGES) break;
@@ -112,7 +133,11 @@ async function unpackImport(file) {
     }
   }
 
-  return { csvBuffer, packedImages };
+  return {
+    tableBuffer,
+    packedImages,
+    sourceExt: path.extname(tableName).toLowerCase()
+  };
 }
 
 async function resolveCategory(rawName, cache, createdCategories) {
@@ -144,8 +169,8 @@ router.post('/import', auth, authorize('admin', 'seller'), (req, res) => {
     }
 
     try {
-      const { csvBuffer, packedImages } = await unpackImport(req.file);
-      const { rows } = parseCsv(csvBuffer.toString('utf8'));
+      const { tableBuffer, packedImages, sourceExt } = await unpackImport(req.file);
+      const rows = parseTable(tableBuffer, sourceExt);
       if (rows.length < 2) {
         return res.status(400).json({ message: 'Le fichier est vide ou ne contient que les en-têtes' });
       }

@@ -21,6 +21,10 @@ export const routes: Routes = [
     loadComponent: () => import('./cart/cart.component').then(m => m.CartComponent)
   },
   {
+    path: 'commande/:token',
+    loadComponent: () => import('./orders/order-tracking.component').then(m => m.OrderTrackingComponent)
+  },
+  {
     path: 'profile',
     loadComponent: () => import('./profile/profile.component').then(m => m.ProfileComponent),
     canActivate: [RoleGuard]

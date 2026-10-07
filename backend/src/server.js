@@ -1,9 +1,10 @@
 require('dotenv').config();
 const app = require('./app');
 const sequelize = require('./config/database');
-const { Product } = require('./models');
+const { Product, Order } = require('./models');
 const seedData = require('./utils/seeder');
 const { assertRuntimeEnv } = require('./config/env');
+const { newPublicToken } = require('./utils/orderPublic');
 
 const PORT = process.env.PORT || 3000;
 let httpServer;
@@ -78,6 +79,14 @@ async function startServer() {
       console.warn('Migration loyalty columns skipped:', e.message);
     }
 
+    try {
+      await sequelize.query('ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "public_token" VARCHAR(64)');
+      await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS "orders_public_token_idx" ON "orders" ("public_token")');
+      console.log('Schema migration applied (orders.public_token).');
+    } catch (e) {
+      console.warn('Migration orders.public_token skipped:', e.message);
+    }
+
     // [BUG-005 FIX] sync({ force: false }) ne modifie jamais les données existantes.
     // En production, utiliser des migrations Sequelize (sequelize-cli).
     await sequelize.sync({ force: false });
@@ -97,6 +106,22 @@ async function startServer() {
       console.log('Indexes ensured (products, orders, order_items).');
     } catch (e) {
       console.warn('Index creation skipped:', e.message);
+    }
+
+    try {
+      const { Op } = require('sequelize');
+      const missing = await Order.findAll({
+        where: { [Op.or]: [{ public_token: null }, { public_token: '' }] },
+        attributes: ['id']
+      });
+      for (const row of missing) {
+        await row.update({ public_token: newPublicToken() });
+      }
+      if (missing.length) {
+        console.log(`Tokens de suivi générés pour ${missing.length} commande(s).`);
+      }
+    } catch (e) {
+      console.warn('Backfill orders.public_token skipped:', e.message);
     }
 
     // [BUG-001 FIX] Le seeder ne s'exécute QUE si la base est vide.

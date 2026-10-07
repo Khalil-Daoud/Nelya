@@ -6,6 +6,8 @@ const { Order, OrderItem, Product, User, sequelize } = require('../models');
 const whatsappService = require('../services/whatsappService');
 const settingsService = require('../services/settingsService');
 const loyaltyService = require('../services/loyaltyService');
+const orderNotify = require('../services/orderNotify');
+const { newPublicToken, isPublicToken, toPublicOrder, trackingUrl } = require('../utils/orderPublic');
 
 // Le client associé à une commande était inclus en entier, donc avec le hash bcrypt
 // de son mot de passe. On ne remonte que les champs affichés par l'interface.
@@ -44,7 +46,11 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
     if (!String(phone || '').trim()) {
       return res.status(400).json({ message: 'Le téléphone est obligatoire pour commander sans compte.' });
     }
-    guest = { name, email: String(guest_email || '').trim() || null };
+    const email = String(guest_email || '').trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Un email valide est obligatoire pour commander sans compte (récapitulatif et suivi).' });
+    }
+    guest = { name, email };
   }
 
   try {
@@ -99,6 +105,7 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
         user_id: req.user ? req.user.id : null,
         guest_name: guest ? guest.name : null,
         guest_email: guest ? guest.email : null,
+        public_token: newPublicToken(),
         total_amount: total.toFixed(2),
         shipping_address,
         phone,
@@ -125,11 +132,13 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
     // Fetch the full order with relations for the notification
     const fullOrder = await Order.findByPk(newOrder.id, { include: orderIncludes() });
 
-    // Notifications WhatsApp (non bloquantes : une commande reste valide si l'envoi échoue)
+    // Boutique + client (email / WhatsApp). L'échec d'un envoi ne casse pas la commande.
     whatsappService.sendOrderNotification(fullOrder).catch(err => console.error('[WhatsApp] send error', err));
-    whatsappService.sendCustomerConfirmation(fullOrder).catch(err => console.error('[WhatsApp] customer send error', err));
+    orderNotify.notifyOrderCreated(fullOrder).catch(err => console.error('[Notify] send error', err));
 
-    return res.status(201).json(fullOrder);
+    const payload = fullOrder.toJSON();
+    payload.tracking_url = trackingUrl(fullOrder.public_token);
+    return res.status(201).json(payload);
   } catch (err) {
     return res.status(400).json({ message: err.message || 'Erreur lors de la création de la commande' });
   }
@@ -150,8 +159,9 @@ router.put('/:id', auth, authorize('admin', 'seller'), async (req, res) => {
       if (!order) return null;
 
       const nextStatus = req.body.status;
+      const previousStatus = order.status;
       // Une annulation remet le stock ; on ne le fait qu'une fois.
-      if (nextStatus === 'cancelled' && order.status !== 'cancelled') {
+      if (nextStatus === 'cancelled' && previousStatus !== 'cancelled') {
         const lines = await OrderItem.findAll({ where: { order_id: order.id }, transaction: t });
         const productIds = [...new Set(lines.map((line) => line.product_id))].sort();
         for (const productId of productIds) {
@@ -175,12 +185,18 @@ router.put('/:id', auth, authorize('admin', 'seller'), async (req, res) => {
         }
       }
 
-      await order.update({ status: nextStatus }, { transaction: t });
-      return order;
+      if (nextStatus) {
+        await order.update({ status: nextStatus }, { transaction: t });
+      }
+      return { id: order.id, statusChanged: Boolean(nextStatus && nextStatus !== previousStatus) };
     });
 
     if (!updated) return res.status(404).json({ message: 'Order not found' });
-    res.json(updated);
+    const full = await Order.findByPk(updated.id, { include: orderIncludes() });
+    if (updated.statusChanged) {
+      orderNotify.notifyOrderStatus(full).catch(err => console.error('[Notify] status error', err));
+    }
+    res.json(full);
   } catch (err) {
     return res.status(400).json({ message: err.message || 'Erreur lors de la mise à jour' });
   }
@@ -224,6 +240,30 @@ router.get('/', auth, async (req, res, next) => {
       limit,
       pages: Math.max(1, Math.ceil(count / limit))
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const trackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { message: 'Trop de requêtes. Réessayez dans quelques minutes.' }
+});
+
+// Suivi public : le secret est le jeton, pas l'identifiant interne.
+router.get('/track/:token', trackLimiter, async (req, res, next) => {
+  try {
+    const token = String(req.params.token || '');
+    if (!isPublicToken(token)) {
+      return res.status(404).json({ message: 'Commande introuvable' });
+    }
+    const order = await Order.findOne({
+      where: { public_token: token },
+      include: orderIncludes()
+    });
+    if (!order) return res.status(404).json({ message: 'Commande introuvable' });
+    res.json(toPublicOrder(order));
   } catch (err) {
     next(err);
   }

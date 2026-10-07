@@ -73,7 +73,7 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
                 <mat-icon>person_outline</mat-icon>
                 <span>
                   <strong>Invité autorisé</strong>
-                  <small>Nom et téléphone au checkout</small>
+                  <small>Nom, email et téléphone — récapitulatif + lien de suivi</small>
                 </span>
               </button>
             </div>
@@ -110,8 +110,10 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
                 </div>
                 <p *ngIf="!whatsapp.providerReady">
                   Après validation, le client est invité à vous envoyer le message dans WhatsApp.
-                  Pour l’automatiser : <code>WHATSAPP_CLOUD_TOKEN</code> et
-                  <code>WHATSAPP_CLOUD_PHONE_ID</code>, ou Twilio, côté serveur.
+                  Les invités reçoivent aussi un email de suivi si
+                  <code>SMTP_HOST</code> et <code>SMTP_FROM</code> sont configurés.
+                  Pour WhatsApp automatique : <code>WHATSAPP_CLOUD_TOKEN</code> et
+                  <code>WHATSAPP_CLOUD_PHONE_ID</code>, ou Twilio.
                 </p>
                 <p *ngIf="whatsapp.providerReady">
                   Le client reçoit sa confirmation sans ouvrir WhatsApp.

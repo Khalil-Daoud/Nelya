@@ -99,11 +99,11 @@ interface StockSummary {
             <code>Ref</code>, <code>Catégorie</code>, <code>Désignation</code>,
             <code>Contenance</code>, <code>Prix</code>, <code>Image</code>
             (<code>Stock</code> et <code>Description</code> facultatives).
-            Excel : <em>Fichier → Enregistrer sous → CSV UTF-8</em>.
+            CSV, Excel (<code>.xlsx</code>) ou ZIP. Première feuille du classeur.
           </p>
           <ul class="import-rules">
-            <li>Un CSV ne peut pas contenir les photos elles-mêmes : seulement un nom de fichier ou un lien.</li>
-            <li>Pour envoyer les images : zippez le CSV avec les photos, et mettez le nom du fichier dans la colonne <strong>Image</strong> (ex. <code>deodorant.jpg</code>).</li>
+            <li>Un CSV ou un Excel ne peut pas contenir les photos elles-mêmes : seulement un nom de fichier ou un lien.</li>
+            <li>Pour envoyer les images : zippez le CSV/Excel avec les photos, et mettez le nom du fichier dans la colonne <strong>Image</strong> (ex. <code>deodorant.jpg</code>).</li>
             <li>Les catégories absentes sont créées. Une Ref déjà connue met le produit à jour.</li>
           </ul>
 
@@ -114,10 +114,10 @@ interface StockSummary {
               <mat-hint>Si la colonne Stock est vide</mat-hint>
             </mat-form-field>
 
-            <input type="file" hidden #csvInput accept=".csv,.txt,.zip,text/csv,application/zip" (change)="onCsvSelected($event)">
+            <input type="file" hidden #csvInput accept=".csv,.txt,.zip,.xlsx,.xls,text/csv,application/zip,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" (change)="onCsvSelected($event)">
             <button mat-flat-button color="primary" [disabled]="importing" (click)="csvInput.click()">
               <mat-icon>upload_file</mat-icon>
-              {{ importing ? 'Import en cours…' : 'Choisir CSV ou ZIP' }}
+              {{ importing ? 'Import en cours…' : 'Choisir CSV, Excel ou ZIP' }}
             </button>
             <mat-spinner *ngIf="importing" diameter="24"></mat-spinner>
             <button mat-stroked-button (click)="downloadTemplate()">
