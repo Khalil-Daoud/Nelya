@@ -9,7 +9,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { FormsModule } from '@angular/forms';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { SettingsService, Currency, WhatsAppSettings, LoyaltyTier, DEFAULT_LOYALTY_TIERS } from '../services/settings.service';
+import { SettingsService, Currency, WhatsAppSettings, LoyaltyTier, DEFAULT_LOYALTY_TIERS, PermissionDef, PermissionGroup } from '../services/settings.service';
 import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
 
 @Component({
@@ -22,7 +22,70 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
   ],
   template: `
     <div class="settings-page fade-in">
-      <p class="lead">Devise, commande, fidélité et WhatsApp — chaque bloc a son rôle.</p>
+      <p class="lead">Devise, commande, fidélité, WhatsApp et groupes de permissions.</p>
+
+      <section class="perms">
+        <header class="panel-head">
+          <h2>Table des permissions</h2>
+          <p>
+            Cochez ce que chaque groupe a le droit de faire.
+            Les administrateurs ont toujours tout. Assignez un groupe à un employé dans <strong>Clients &amp; Employés</strong>.
+          </p>
+        </header>
+
+        <div class="perm-create">
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Nouveau groupe</mat-label>
+            <input matInput [(ngModel)]="newGroupName" maxlength="40" placeholder="Ex: Support, Magasin"
+              (keydown.enter)="$event.preventDefault(); addGroup()">
+          </mat-form-field>
+          <button mat-stroked-button type="button" [disabled]="!newGroupName.trim() || savingPerms" (click)="addGroup()">
+            <mat-icon>add</mat-icon> Créer un groupe
+          </button>
+        </div>
+
+        <div class="perm-table-wrap">
+          <table class="perm-table">
+            <thead>
+              <tr>
+                <th class="perm-col-label">Action</th>
+                <th *ngFor="let group of permissionGroups">
+                  <div class="perm-col-head">
+                    <input *ngIf="!group.system" class="perm-name" [(ngModel)]="group.name" maxlength="40">
+                    <span *ngIf="group.system">{{ group.name }}</span>
+                    <small *ngIf="group.system">système</small>
+                    <button *ngIf="!group.system" type="button" class="del-group" [disabled]="savingPerms" (click)="removeGroup(group)">
+                      <mat-icon>delete</mat-icon> Supprimer
+                    </button>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <ng-container *ngFor="let section of permissionSections">
+                <tr class="perm-section-row">
+                  <td [attr.colspan]="1 + permissionGroups.length">{{ section }}</td>
+                </tr>
+                <tr *ngFor="let perm of permsIn(section)">
+                  <td class="perm-col-label">{{ perm.label }}</td>
+                  <td *ngFor="let group of permissionGroups" class="perm-cell">
+                    <mat-icon *ngIf="group.id === 'admin'" class="perm-locked">check_circle</mat-icon>
+                    <mat-checkbox
+                      *ngIf="group.id !== 'admin'"
+                      [checked]="groupHas(group, perm.key)"
+                      (change)="togglePerm(group, perm.key, $event.checked)">
+                    </mat-checkbox>
+                  </td>
+                </tr>
+              </ng-container>
+            </tbody>
+          </table>
+        </div>
+
+        <button mat-flat-button color="primary" class="save-btn" [disabled]="savingPerms" (click)="savePermissionGroups()">
+          Enregistrer les groupes
+        </button>
+      </section>
 
       <div class="layout">
 
@@ -56,7 +119,7 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
           <section class="panel">
             <header class="panel-head">
               <h2>Commande</h2>
-              <p>Qui a le droit de valider un panier.</p>
+              <p>Qui a le droit de valider un panier. Toute commande est enregistrée en « En attente » jusqu’à ce que vous changiez le statut.</p>
             </header>
 
             <div class="choice-list">
@@ -103,26 +166,33 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
 
               <div class="wa-col wa-col-confirm">
                 <h3>Confirmation client</h3>
+                <p>
+                  WhatsApp n’est pas obligatoire. Sans WhatsApp, la commande reste visible ici en
+                  <strong>En attente</strong> — vous la confirmez dans le tableau Commandes.
+                  Les invités reçoivent aussi un email de suivi si
+                  <code>SMTP_HOST</code> et <code>SMTP_FROM</code> sont configurés.
+                </p>
+                <mat-checkbox
+                  [(ngModel)]="whatsappInvite"
+                  (change)="saveWhatsAppInvite()"
+                  [disabled]="savingInvite">
+                  Proposer WhatsApp après la commande
+                </mat-checkbox>
                 <div class="pill" [class.ok]="whatsapp.providerReady">
                   {{ whatsapp.providerReady
                     ? 'Envoi automatique disponible'
                     : 'Envoi automatique indisponible' }}
                 </div>
-                <p *ngIf="!whatsapp.providerReady">
-                  Après validation, le client est invité à vous envoyer le message dans WhatsApp.
-                  Les invités reçoivent aussi un email de suivi si
-                  <code>SMTP_HOST</code> et <code>SMTP_FROM</code> sont configurés.
-                  Pour WhatsApp automatique : <code>WHATSAPP_CLOUD_TOKEN</code> et
-                  <code>WHATSAPP_CLOUD_PHONE_ID</code>, ou Twilio.
-                </p>
-                <p *ngIf="whatsapp.providerReady">
-                  Le client reçoit sa confirmation sans ouvrir WhatsApp.
+                <p *ngIf="!whatsapp.providerReady" class="wa-auto-hint">
+                  Pour envoyer le message à la place du client :
+                  <code>WHATSAPP_CLOUD_TOKEN</code> et <code>WHATSAPP_CLOUD_PHONE_ID</code>, ou Twilio.
                 </p>
                 <mat-checkbox
+                  *ngIf="whatsappInvite"
                   [(ngModel)]="notifyCustomer"
                   (change)="saveNotifyCustomer()"
                   [disabled]="savingNotify || !whatsapp.providerReady">
-                  Envoyer automatiquement
+                  Envoyer automatiquement (API WhatsApp)
                 </mat-checkbox>
               </div>
             </div>
@@ -307,13 +377,48 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
     .wa-col-confirm { border-top: 1px solid var(--luxe-border); }
     .wa-col h3 { font-size: 0.78rem; letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 10px; }
     .wa-col p { margin-bottom: 16px; }
+    .wa-col mat-checkbox { display: block; margin: 4px 0 14px; }
     .full { width: 100%; }
     .pill {
       display: inline-block; margin-bottom: 12px; padding: 6px 12px; border-radius: 999px;
       font-size: 0.75rem; font-weight: 600; background: var(--luxe-offwhite); color: var(--luxe-text-muted);
     }
     .pill.ok { background: rgba(37,211,102,0.12); color: #1b7a3d; }
+    .wa-auto-hint { margin-top: 10px; }
     code { background: var(--luxe-offwhite); border: 1px solid var(--luxe-border); border-radius: 4px; padding: 1px 5px; font-size: 0.75rem; }
+
+    .perms {
+      margin: 0 0 22px; padding: 24px;
+      background: var(--luxe-white); border: 1px solid var(--luxe-border);
+      border-radius: 16px; box-shadow: var(--shadow-subtle);
+    }
+    .perm-create { display: flex; gap: 12px; align-items: center; margin: 18px 0 16px; flex-wrap: wrap; }
+    .perm-create mat-form-field { min-width: 240px; flex: 1; max-width: 360px; }
+    .perm-table-wrap { overflow-x: auto; border: 1px solid var(--luxe-border); border-radius: 10px; background: #fff; }
+    .perm-table { width: 100%; min-width: 560px; border-collapse: collapse; }
+    .perm-table th, .perm-table td { padding: 12px 14px; border-bottom: 1px solid var(--luxe-border); vertical-align: middle; }
+    .perm-table thead th { background: var(--luxe-offwhite); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; text-align: center; }
+    .perm-col-label { text-align: left !important; min-width: 240px; font-weight: 500; color: var(--luxe-black); }
+    .perm-col-head { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .perm-col-head small { font-size: 0.65rem; letter-spacing: 1px; color: var(--luxe-gold); text-transform: uppercase; }
+    .perm-name {
+      width: 120px; text-align: center; border: 1px solid var(--luxe-border); border-radius: 6px;
+      padding: 6px 8px; font-family: var(--font-body); font-size: 0.85rem;
+    }
+    .del-group {
+      display: inline-flex; align-items: center; gap: 4px; margin-top: 4px;
+      border: none; background: transparent; cursor: pointer;
+      color: #c62828; font-size: 0.72rem; font-family: var(--font-body);
+    }
+    .del-group:hover:not(:disabled) { text-decoration: underline; }
+    .del-group:disabled { opacity: 0.4; cursor: wait; }
+    .del-group mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .perm-section-row td {
+      background: var(--luxe-offwhite); font-size: 0.68rem; letter-spacing: 1.4px;
+      text-transform: uppercase; color: var(--luxe-text-muted); font-weight: 700;
+    }
+    .perm-cell { text-align: center; }
+    .perm-locked { color: var(--luxe-gold); font-size: 22px; width: 22px; height: 22px; }
 
     @media (max-width: 960px) {
       .layout { grid-template-columns: 1fr; }
@@ -337,14 +442,30 @@ export class AdminSettingsComponent implements OnInit {
   guestCheckout = false;
   savingGuest = false;
 
-  whatsapp: WhatsAppSettings = { number: '', notifyCustomer: false, providerReady: false, autoSend: false };
+  whatsapp: WhatsAppSettings = { number: '', invite: true, notifyCustomer: false, providerReady: false, autoSend: false };
   whatsappNumber = '';
+  whatsappInvite = true;
   notifyCustomer = false;
   savingNumber = false;
+  savingInvite = false;
   savingNotify = false;
 
   loyaltyTiers: LoyaltyTier[] = DEFAULT_LOYALTY_TIERS.map(t => ({ ...t }));
   savingLoyalty = false;
+
+  permissionCatalog: PermissionDef[] = [
+    { key: 'orders.update_status', section: 'Commandes', label: 'Changer le statut (attente, confirmée, expédiée, livrée)' },
+    { key: 'orders.cancel', section: 'Commandes', label: 'Annuler une commande' },
+    { key: 'products.manage', section: 'Catalogue', label: 'Créer et modifier les produits' },
+    { key: 'stock.manage', section: 'Catalogue', label: 'Ajuster le stock' },
+    { key: 'categories.manage', section: 'Catalogue', label: 'Gérer les catégories' }
+  ];
+  permissionGroups: PermissionGroup[] = [
+    { id: 'admin', name: 'Administrateur', system: true, permissions: ['*'] },
+    { id: 'seller', name: 'Employé', system: true, permissions: ['orders.update_status', 'orders.cancel', 'products.manage', 'stock.manage', 'categories.manage'] }
+  ];
+  newGroupName = '';
+  savingPerms = false;
 
   constructor(private settings: SettingsService, private snackBar: MatSnackBar) {}
 
@@ -365,12 +486,83 @@ export class AdminSettingsComponent implements OnInit {
     this.settings.whatsapp$.subscribe((w: WhatsAppSettings) => {
       this.whatsapp = w;
       this.whatsappNumber = w.number ? `+${w.number}` : '';
+      this.whatsappInvite = w.invite !== false;
       this.notifyCustomer = w.notifyCustomer;
     });
 
     this.settings.loyaltyTiers$.subscribe((tiers: LoyaltyTier[]) => {
       this.loyaltyTiers = (tiers || DEFAULT_LOYALTY_TIERS).map(t => ({ ...t }));
     });
+
+    this.settings.loadAccess().then((access) => {
+      if (access.catalog?.length) this.permissionCatalog = access.catalog;
+      if (access.groups?.length) {
+        this.permissionGroups = access.groups.map((g) => ({ ...g, permissions: [...(g.permissions || [])] }));
+      }
+    }).catch(() => {});
+  }
+
+  get permissionSections(): string[] {
+    return [...new Set(this.permissionCatalog.map((p) => p.section))];
+  }
+
+  permsIn(section: string): PermissionDef[] {
+    return this.permissionCatalog.filter((p) => p.section === section);
+  }
+
+  groupHas(group: PermissionGroup, key: string): boolean {
+    return group.permissions?.includes('*') || group.permissions?.includes(key);
+  }
+
+  togglePerm(group: PermissionGroup, key: string, checked: boolean) {
+    const current = new Set(group.permissions.filter((p) => p !== '*'));
+    if (checked) current.add(key);
+    else current.delete(key);
+    group.permissions = [...current];
+  }
+
+  addGroup() {
+    const name = this.newGroupName.trim();
+    if (!name || this.savingPerms) return;
+    this.permissionGroups = [
+      ...this.permissionGroups,
+      {
+        id: `grp_${Date.now().toString(36)}`,
+        name,
+        system: false,
+        permissions: ['orders.update_status']
+      }
+    ];
+    this.newGroupName = '';
+    this.savePermissionGroups(`Groupe « ${name} » créé`);
+  }
+
+  removeGroup(group: PermissionGroup) {
+    if (group.system || this.savingPerms) return;
+    if (!confirm(`Supprimer le groupe « ${group.name} » ? Les employés concernés repasseront sur Employé.`)) return;
+    const previous = this.permissionGroups;
+    this.permissionGroups = this.permissionGroups.filter((g) => g.id !== group.id);
+    this.savePermissionGroups(`Groupe « ${group.name} » supprimé`, previous);
+  }
+
+  savePermissionGroups(okMessage = 'Groupes de permissions enregistrés', restoreOnError?: PermissionGroup[]) {
+    this.savingPerms = true;
+    this.settings.savePermissionGroups(this.permissionGroups).then((access) => {
+      this.savingPerms = false;
+      if (access.groups?.length) {
+        this.permissionGroups = access.groups.map((g) => ({ ...g, permissions: [...(g.permissions || [])] }));
+      }
+      this.snackBar.open(okMessage, 'OK', { duration: 3000 });
+    }).catch((err) => {
+      this.savingPerms = false;
+      if (restoreOnError) this.permissionGroups = restoreOnError;
+      this.snackBar.open(this.saveError(err), 'Fermer', { duration: 5000 });
+    });
+  }
+
+  private saveError(err: any): string {
+    if (err?.status === 0) return 'API injoignable. Relancez le serveur backend puis réessayez.';
+    return err?.error?.message || 'Enregistrement impossible';
   }
 
   addTier() {
@@ -441,6 +633,24 @@ export class AdminSettingsComponent implements OnInit {
     }).catch(err => {
       this.savingNumber = false;
       this.snackBar.open(err?.error?.message || 'Numéro invalide', 'Fermer', { duration: 4000 });
+    });
+  }
+
+  saveWhatsAppInvite() {
+    this.savingInvite = true;
+    this.settings.save({ whatsappInvite: this.whatsappInvite }).then(() => {
+      this.savingInvite = false;
+      this.snackBar.open(
+        this.whatsappInvite
+          ? 'WhatsApp proposé au client après commande'
+          : 'Pas d’invitation WhatsApp — la commande reste en attente dans Commandes',
+        'OK',
+        { duration: 3500 }
+      );
+    }).catch(() => {
+      this.savingInvite = false;
+      this.whatsappInvite = this.settings.whatsapp.invite !== false;
+      this.snackBar.open('Erreur lors de la mise à jour', 'Fermer', { duration: 4000 });
     });
   }
 

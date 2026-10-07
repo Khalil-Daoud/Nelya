@@ -11,6 +11,8 @@ export interface Currency {
 export interface WhatsAppSettings {
   /** Numéro de la boutique au format international sans "+", ex : 21622580632 */
   number: string;
+  /** Proposer WhatsApp au client après commande (lien wa.me) */
+  invite: boolean;
   notifyCustomer: boolean;
   /** Un fournisseur officiel (Meta ou Twilio) est configuré côté serveur */
   providerReady: boolean;
@@ -34,17 +36,33 @@ export interface StoreSettings {
 const DEFAULT_CURRENCY: Currency = { code: 'EUR', symbol: '€', label: 'Euro' };
 const DEFAULT_WHATSAPP: WhatsAppSettings = {
   number: '',
+  invite: true,
   notifyCustomer: false,
   providerReady: false,
   autoSend: false
 };
 
+export interface PermissionDef {
+  key: string;
+  section: string;
+  label: string;
+}
+
+export interface PermissionGroup {
+  id: string;
+  name: string;
+  system?: boolean;
+  permissions: string[];
+}
+
 export interface SettingsPayload {
   currency?: string;
   guestCheckout?: boolean;
   whatsappNumber?: string;
+  whatsappInvite?: boolean;
   notifyCustomer?: boolean;
   loyaltyTiers?: LoyaltyTier[];
+  permissionGroups?: PermissionGroup[];
 }
 
 export const DEFAULT_LOYALTY_TIERS: LoyaltyTier[] = [
@@ -118,6 +136,19 @@ export class SettingsService {
 
   save(payload: SettingsPayload): Promise<void> {
     return firstValueFrom(this.api.putTo<StoreSettings>('settings', payload)).then(s => this.apply(s));
+  }
+
+  loadAccess(): Promise<{ catalog: PermissionDef[]; groups: PermissionGroup[] }> {
+    return firstValueFrom(this.api.get<{ catalog: PermissionDef[]; groups: PermissionGroup[] }>('settings/access'));
+  }
+
+  savePermissionGroups(groups: PermissionGroup[]): Promise<{ catalog: PermissionDef[]; groups: PermissionGroup[] }> {
+    return firstValueFrom(this.api.putTo<StoreSettings & { access?: { catalog: PermissionDef[]; groups: PermissionGroup[] } }>('settings', {
+      permissionGroups: groups
+    })).then((res) => {
+      this.apply(res);
+      return res.access || { catalog: [], groups };
+    });
   }
 
   private apply(settings: StoreSettings): void {

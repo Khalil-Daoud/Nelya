@@ -260,6 +260,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit() {
+    this.authService.refreshMe();
     this.authService.currentUser$.subscribe(user => {
       this.user = user;
       this.isAdmin = user?.role === 'admin';

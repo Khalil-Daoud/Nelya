@@ -47,4 +47,22 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = { auth, optionalAuth, authorize };
+const requirePermission = (key) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+      const permissionService = require('../services/permissionService');
+      const allowed = await permissionService.userHas(req.user.id, key);
+      if (!allowed) {
+        return res.status(403).json({ message: 'Permission insuffisante pour cette action.' });
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+};
+
+module.exports = { auth, optionalAuth, authorize, requirePermission };

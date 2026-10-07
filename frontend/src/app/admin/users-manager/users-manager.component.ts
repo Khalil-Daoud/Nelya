@@ -13,6 +13,7 @@ import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dial
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { FormsModule } from '@angular/forms';
 import { PaginationComponent } from '../../components/pagination/pagination.component';
+import { SettingsService, PermissionGroup } from '../../services/settings.service';
 
 @Component({
   selector: 'app-reset-password-dialog',
@@ -125,6 +126,12 @@ export class ResetPasswordDialogComponent {
               <mat-option value="admin">Administrateur</mat-option>
             </mat-select>
           </mat-form-field>
+          <mat-form-field appearance="outline" *ngIf="newUser.role === 'seller'">
+            <mat-label>Groupe de permissions</mat-label>
+            <mat-select [(ngModel)]="newUser.permission_group_id">
+              <mat-option *ngFor="let g of staffGroups" [value]="g.id">{{ g.name }}</mat-option>
+            </mat-select>
+          </mat-form-field>
         </div>
         <button mat-flat-button color="primary" [disabled]="!canCreate" (click)="createUser()">
           <mat-icon>save</mat-icon> Créer le compte
@@ -154,6 +161,21 @@ export class ResetPasswordDialogComponent {
                 <mat-option value="seller">Employé</mat-option>
                 <mat-option value="admin">Administrateur</mat-option>
               </mat-select>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="group">
+            <th mat-header-cell *matHeaderCellDef> Groupe </th>
+            <td mat-cell *matCellDef="let user">
+              <mat-select
+                *ngIf="user.role === 'seller'"
+                class="role-select group-select"
+                [value]="user.permission_group_id || 'seller'"
+                (selectionChange)="updateGroup(user, $event.value)">
+                <mat-option *ngFor="let g of staffGroups" [value]="g.id">{{ g.name }}</mat-option>
+              </mat-select>
+              <span *ngIf="user.role === 'admin'" class="user-email">Administrateur</span>
+              <span *ngIf="user.role === 'client'" class="user-email">—</span>
             </td>
           </ng-container>
 
@@ -223,6 +245,7 @@ export class ResetPasswordDialogComponent {
     .user-info span { font-weight: 500; color: var(--luxe-black); }
     .user-email { font-size: 0.75rem; font-weight: 300 !important; color: var(--luxe-text-muted); }
     .role-select { width: 130px; }
+    .group-select { width: 160px; }
 
     .empty-state { text-align: center; padding: 60px 20px; color: var(--luxe-text-muted); }
     .empty-state mat-icon { font-size: 3rem; width: 48px; height: 48px; margin-bottom: 12px; }
@@ -239,9 +262,10 @@ export class UsersManagerComponent implements OnInit {
   filteredUsers: any[] = [];
   filter: 'all' | 'client' | 'employee' = 'all';
   showForm = false;
-  displayedColumns: string[] = ['username', 'role', 'points', 'created', 'actions'];
+  displayedColumns: string[] = ['username', 'role', 'group', 'points', 'created', 'actions'];
 
-  newUser: any = { first_name: '', last_name: '', email: '', password: '', role: 'client' };
+  newUser: any = { first_name: '', last_name: '', email: '', password: '', role: 'client', permission_group_id: 'seller' };
+  staffGroups: PermissionGroup[] = [];
   searchTerm = '';
   pageIndex = 0;
   pageSize = 8;
@@ -253,10 +277,13 @@ export class UsersManagerComponent implements OnInit {
   resetPage() { this.pageIndex = 0; }
   onPageChange(index: number) { this.pageIndex = index; }
 
-  constructor(private crud: CrudService, private snackBar: MatSnackBar, private dialog: MatDialog) {}
+  constructor(private crud: CrudService, private snackBar: MatSnackBar, private dialog: MatDialog, private settings: SettingsService) {}
 
   ngOnInit() {
     this.loadUsers();
+    this.settings.loadAccess().then((access) => {
+      this.staffGroups = (access.groups || []).filter((g) => g.id !== 'admin');
+    }).catch(() => {});
   }
 
   resetPassword(user: any) {
@@ -319,7 +346,7 @@ export class UsersManagerComponent implements OnInit {
       next: () => {
         this.snackBar.open('Compte créé avec succès', 'OK', { duration: 3000 });
         this.showForm = false;
-        this.newUser = { first_name: '', last_name: '', email: '', password: '', role: 'client' };
+        this.newUser = { first_name: '', last_name: '', email: '', password: '', role: 'client', permission_group_id: 'seller' };
         this.loadUsers();
       },
       error: () => this.snackBar.open('Erreur lors de la création du compte', 'Fermer', { duration: 4000 })
@@ -328,13 +355,27 @@ export class UsersManagerComponent implements OnInit {
 
   updateRole(user: any, role: string) {
     if (user.role === role) return;
-    this.crud.update('users', user.id, { role }).subscribe({
-      next: () => {
+    const payload: any = { role };
+    if (role === 'seller') payload.permission_group_id = user.permission_group_id || 'seller';
+    this.crud.update('users', user.id, payload).subscribe({
+      next: (updated: any) => {
         user.role = role;
+        user.permission_group_id = updated?.permission_group_id ?? (role === 'seller' ? 'seller' : null);
         this.applyFilter();
         this.snackBar.open(`Rôle mis à jour : ${role}`, 'OK', { duration: 3000 });
       },
       error: () => this.snackBar.open('Erreur lors de la mise à jour du rôle', 'Fermer', { duration: 4000 })
+    });
+  }
+
+  updateGroup(user: any, groupId: string) {
+    if ((user.permission_group_id || 'seller') === groupId) return;
+    this.crud.update('users', user.id, { permission_group_id: groupId }).subscribe({
+      next: () => {
+        user.permission_group_id = groupId;
+        this.snackBar.open('Groupe de permissions mis à jour', 'OK', { duration: 3000 });
+      },
+      error: () => this.snackBar.open('Erreur lors de la mise à jour du groupe', 'Fermer', { duration: 4000 })
     });
   }
 

@@ -1,7 +1,7 @@
 const express = require('express');
 const BaseService = require('./BaseService');
 const models = require('../models');
-const { auth, authorize } = require('../middlewares/auth');
+const { auth, authorize, requirePermission } = require('../middlewares/auth');
 const { buildListQuery } = require('./listQuery');
 
 // [SEC-FIX] Configuration par modèle : contrôle fin de ce qui est lisible/écrivable.
@@ -10,6 +10,7 @@ const { buildListQuery } = require('./listQuery');
 const MODEL_CONFIG = {
   Product: {
     publicRead: true,
+    writePermission: 'products.manage',
     writeFields: ['reference', 'name', 'contenance', 'description', 'price', 'stock', 'image_url', 'category'],
     searchFields: ['name', 'description', 'reference', 'category'],
     filterFields: ['category'],
@@ -18,6 +19,7 @@ const MODEL_CONFIG = {
   },
   Category: {
     publicRead: true,
+    writePermission: 'categories.manage',
     writeFields: ['name', 'description'],
     searchFields: ['name'],
     sortFields: { name: 'name', newest: 'createdAt' },
@@ -25,7 +27,7 @@ const MODEL_CONFIG = {
   User: {
     publicRead: false,
     readRoles: ['admin'],
-    writeFields: ['first_name', 'last_name', 'email', 'password', 'role'],
+    writeFields: ['first_name', 'last_name', 'email', 'password', 'role', 'permission_group_id'],
     readExclude: ['password'],
     searchFields: ['first_name', 'last_name', 'email'],
     filterFields: ['role'],
@@ -79,9 +81,16 @@ function createDynamicRouter(modelName) {
   // [SEC-FIX] Corps limité aux champs autorisés + rôle protégé (admin uniquement)
   const getWriteBody = (req, res) => {
     const data = pickFields(req.body, config.writeFields);
-    if (modelName === 'User' && 'role' in data && req.user.role !== 'admin') {
-      res.status(403).json({ message: 'Seul un administrateur peut modifier le rôle' });
+    if (modelName === 'User' && ('role' in data || 'permission_group_id' in data) && req.user.role !== 'admin') {
+      res.status(403).json({ message: 'Seul un administrateur peut modifier le rôle ou le groupe' });
       return null;
+    }
+    if (modelName === 'User' && data.role === 'admin') {
+      data.permission_group_id = 'admin';
+    } else if (modelName === 'User' && data.role === 'client') {
+      data.permission_group_id = null;
+    } else if (modelName === 'User' && data.role === 'seller' && !data.permission_group_id) {
+      data.permission_group_id = 'seller';
     }
     if (modelName === 'User' && 'password' in data && req.user.role !== 'admin') {
       res.status(403).json({ message: 'Seul un administrateur peut modifier le mot de passe' });
@@ -125,8 +134,13 @@ function createDynamicRouter(modelName) {
     }
   });
 
+  const checkWritePermission = (req, res, next) => {
+    if (!config.writePermission) return next();
+    return requirePermission(config.writePermission)(req, res, next);
+  };
+
   // [BUG-003 FIX] Création : authentifié + rôle admin ou seller
-  router.post('/', auth, authorize('admin', 'seller'), async (req, res) => {
+  router.post('/', auth, authorize('admin', 'seller'), checkWritePermission, async (req, res) => {
     try {
       const data = getWriteBody(req, res);
       if (data === null) return;
@@ -138,7 +152,7 @@ function createDynamicRouter(modelName) {
   });
 
   // [BUG-003 FIX] Modification : authentifié + rôle admin ou seller
-  router.put('/:id', auth, authorize('admin', 'seller'), async (req, res) => {
+  router.put('/:id', auth, authorize('admin', 'seller'), checkWritePermission, async (req, res) => {
     try {
       const data = getWriteBody(req, res);
       if (data === null) return;

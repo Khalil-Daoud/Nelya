@@ -9,9 +9,11 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { FormsModule } from '@angular/forms';
 import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
 import { PaginationComponent } from '../../components/pagination/pagination.component';
+import { AuthService } from '../../services/auth.service';
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
 
@@ -26,12 +28,12 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
 @Component({
   selector: 'app-orders-manager',
   standalone: true,
-  imports: [CommonModule, MatTableModule, MatButtonModule, MatIconModule, MatChipsModule, MatSelectModule, MatFormFieldModule, MatInputModule, MatSnackBarModule, FormsModule, FormatCurrencyPipe, PaginationComponent],
+  imports: [CommonModule, MatTableModule, MatButtonModule, MatIconModule, MatChipsModule, MatSelectModule, MatFormFieldModule, MatInputModule, MatSnackBarModule, MatTooltipModule, FormsModule, FormatCurrencyPipe, PaginationComponent],
   template: `
     <div class="manager-container fade-in">
       <div class="header">
         <h2 class="luxury-title">Gestion des Commandes</h2>
-        <p>Consultez les détails de chaque commande et mettez à jour son statut.</p>
+        <p>Changez le statut dans le tableau. L’annulation est disponible ici et dans le détail. Les permissions dépendent du groupe.</p>
       </div>
 
       <div class="toolbar">
@@ -80,14 +82,32 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
           <ng-container matColumnDef="status">
             <th mat-header-cell *matHeaderCellDef> Statut </th>
             <td mat-cell *matCellDef="let order">
-              <span class="status-badge" [ngClass]="(order.status || '').toLowerCase()">{{translateStatus(order.status)}}</span>
+              <mat-select
+                *ngIf="canUpdateStatus && order.status !== 'cancelled'"
+                class="status-select-table"
+                [ngClass]="(order.status || '').toLowerCase()"
+                [value]="order.status"
+                (selectionChange)="updateStatus(order, $event.value)">
+                <mat-option *ngFor="let s of editableStatuses" [value]="s">{{translateStatus(s)}}</mat-option>
+              </mat-select>
+              <span *ngIf="!canUpdateStatus || order.status === 'cancelled'" class="status-badge" [ngClass]="(order.status || '').toLowerCase()">
+                {{translateStatus(order.status)}}
+              </span>
             </td>
           </ng-container>
 
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef> </th>
-            <td mat-cell *matCellDef="let order">
-              <button mat-icon-button color="primary" (click)="toggleDetail(order.id)">
+            <td mat-cell *matCellDef="let order" class="actions-cell">
+              <button
+                *ngIf="canCancel && order.status !== 'cancelled'"
+                mat-icon-button
+                color="warn"
+                matTooltip="Annuler la commande"
+                (click)="cancelOrder(order)">
+                <mat-icon>cancel</mat-icon>
+              </button>
+              <button mat-icon-button color="primary" matTooltip="Détail" (click)="toggleDetail(order.id)">
                 <mat-icon>{{expandedId === order.id ? 'expand_less' : 'expand_more'}}</mat-icon>
               </button>
             </td>
@@ -116,9 +136,15 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
                   </div>
                   <div class="detail-block">
                     <h4>Statut</h4>
-                    <mat-select class="status-select" [value]="order.status" (selectionChange)="updateStatus(order, $event.value)">
-                      <mat-option *ngFor="let s of statuses" [value]="s">{{translateStatus(s)}}</mat-option>
-                    </mat-select>
+                    <p class="status-readonly">{{ translateStatus(order.status) }}</p>
+                    <button
+                      *ngIf="canCancel && order.status !== 'cancelled'"
+                      mat-stroked-button
+                      color="warn"
+                      class="cancel-btn"
+                      (click)="cancelOrder(order)">
+                      <mat-icon>cancel</mat-icon> Annuler la commande
+                    </button>
                   </div>
                 </div>
 
@@ -200,6 +226,12 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     .status-badge.shipped { background: #e8f5e9; color: #2e7d32; }
     .status-badge.delivered { background: #f3e5f5; color: #7b1fa2; }
     .status-badge.cancelled { background: #ffebee; color: #c62828; }
+    .status-select-table { width: 148px; font-size: 0.82rem; }
+    .status-select-table.pending { color: #f57f17; }
+    .status-select-table.confirmed { color: #1976d2; }
+    .status-select-table.shipped { color: #2e7d32; }
+    .status-select-table.delivered { color: #7b1fa2; }
+    .actions-cell { white-space: nowrap; }
 
     .detail-row td.mat-cell { padding: 0; border: none; }
     .detail-panel { background: var(--luxe-offwhite); padding: 30px; border-top: 1px solid var(--luxe-border); }
@@ -207,7 +239,8 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     .detail-block h4 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: var(--luxe-text-muted); margin: 0 0 12px; font-weight: 600; }
     .detail-block p { margin: 4px 0; font-size: 0.9rem; color: var(--luxe-charcoal); }
     .detail-block p strong { color: var(--luxe-black); font-weight: 600; }
-    .status-select { width: 100%; }
+    .status-readonly { margin-top: 0; font-weight: 600; }
+    .cancel-btn { margin-top: 12px; }
 
     .items-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: var(--luxe-text-muted); margin: 0 0 12px; font-weight: 600; }
     .items-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
@@ -242,7 +275,19 @@ export class OrdersManagerComponent implements OnInit {
   pageIndex = 0;
   pageSize = 8;
 
-  constructor(private crud: CrudService, private snackBar: MatSnackBar) {}
+  constructor(private crud: CrudService, private snackBar: MatSnackBar, private auth: AuthService) {}
+
+  get canUpdateStatus(): boolean {
+    return this.auth.hasPermission('orders.update_status');
+  }
+
+  get canCancel(): boolean {
+    return this.auth.hasPermission('orders.cancel');
+  }
+
+  get editableStatuses(): string[] {
+    return ORDER_STATUSES.filter((s) => s !== 'cancelled');
+  }
 
   customerName(order: any): string {
     if (order.User) return `${order.User.first_name} ${order.User.last_name}`;
@@ -324,7 +369,13 @@ export class OrdersManagerComponent implements OnInit {
         order.status = status;
         this.snackBar.open(`Statut mis à jour : ${this.translateStatus(status)}`, 'OK', { duration: 3000 });
       },
-      error: () => this.snackBar.open('Erreur lors de la mise à jour du statut', 'Fermer', { duration: 4000 })
+      error: (err) => this.snackBar.open(err?.error?.message || 'Erreur lors de la mise à jour du statut', 'Fermer', { duration: 4000 })
     });
+  }
+
+  cancelOrder(order: any) {
+    if (order.status === 'cancelled') return;
+    if (!confirm(`Annuler la commande #${String(order.id).slice(0, 8)} ? Le stock sera remis en rayon.`)) return;
+    this.updateStatus(order, 'cancelled');
   }
 }

@@ -32,6 +32,10 @@ const User = sequelize.define('User', {
     type: DataTypes.ENUM('admin', 'seller', 'client'),
     defaultValue: 'client'
   },
+  permission_group_id: {
+    type: DataTypes.STRING(64),
+    allowNull: true
+  },
   loyalty_points: {
     type: DataTypes.INTEGER,
     allowNull: false,

@@ -153,6 +153,17 @@ router.put('/:id', auth, authorize('admin', 'seller'), async (req, res) => {
     if (req.body.status && !allowedStatuses.includes(req.body.status)) {
       return res.status(400).json({ message: 'Statut invalide' });
     }
+    if (req.body.status) {
+      const needed = req.body.status === 'cancelled' ? 'orders.cancel' : 'orders.update_status';
+      const allowed = await require('../services/permissionService').userHas(req.user.id, needed);
+      if (!allowed) {
+        return res.status(403).json({
+          message: req.body.status === 'cancelled'
+            ? 'Votre groupe n’autorise pas l’annulation des commandes.'
+            : 'Votre groupe n’autorise pas le changement de statut.'
+        });
+      }
+    }
 
     const updated = await sequelize.transaction(async (t) => {
       const order = await Order.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });

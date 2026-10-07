@@ -9,6 +9,8 @@ export interface User {
   last_name: string;
   email: string;
   role: 'admin' | 'seller' | 'client';
+  permission_group_id?: string | null;
+  permissions?: string[];
   loyalty_points?: number;
   created_at?: string;
   createdAt?: string;
@@ -19,10 +21,6 @@ export interface User {
 })
 export class AuthService {
   private apiUrl = (() => {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
-      return 'http://localhost:3000/api/auth';
-    }
     const origin = API_BASE_URL.replace(/\/$/, '');
     return origin ? `${origin}/api/auth` : '/api/auth';
   })();
@@ -87,5 +85,13 @@ export class AuthService {
 
   get isAdmin(): boolean {
     return this.currentUserSubject.value?.role === 'admin';
+  }
+
+  hasPermission(key: string): boolean {
+    const user = this.currentUserSubject.value;
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    const permissions = user.permissions || [];
+    return permissions.includes('*') || permissions.includes(key);
   }
 }

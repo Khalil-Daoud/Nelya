@@ -5,7 +5,7 @@ const fs = require('fs');
 const sharp = require('sharp');
 const JSZip = require('jszip');
 const { Op } = require('sequelize');
-const { auth, authorize } = require('../middlewares/auth');
+const { auth, authorize, requirePermission } = require('../middlewares/auth');
 const { Product, Category } = require('../models');
 const { parseCsv, normalizeHeader, parsePrice } = require('../utils/csv');
 const { parseSpreadsheet } = require('../utils/spreadsheet');
@@ -156,7 +156,7 @@ async function resolveCategory(rawName, cache, createdCategories) {
   return category.name;
 }
 
-router.post('/import', auth, authorize('admin', 'seller'), (req, res) => {
+router.post('/import', auth, authorize('admin', 'seller'), requirePermission('products.manage'), (req, res) => {
   upload.single('file')(req, res, async (uploadError) => {
     if (uploadError) {
       const message = uploadError.code === 'LIMIT_FILE_SIZE'

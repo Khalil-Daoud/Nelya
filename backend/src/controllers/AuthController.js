@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { signToken } = require('../config/jwt');
+const permissionService = require('../services/permissionService');
 
 // Hash calculé une fois au chargement du module : compare() d'un compte inexistant
 // prend alors le même temps qu'un mot de passe faux, ce qui empêche de deviner
@@ -8,9 +9,14 @@ const { signToken } = require('../config/jwt');
 const TIMING_DUMMY_HASH = bcrypt.hashSync('nelya-timing-dummy', 10);
 
 // Helper: retirer le mot de passe de la réponse
-function sanitizeUser(user) {
+async function sanitizeUser(user) {
   const { password, ...userSafe } = user.toJSON();
-  return userSafe;
+  const permissions = await permissionService.permissionsForUserId(user.id);
+  return {
+    ...userSafe,
+    permission_group_id: permissionService.resolveGroupId(user),
+    permissions
+  };
 }
 
 class AuthController {
@@ -28,7 +34,7 @@ class AuthController {
       const token = signToken({ id: user.id, role: user.role });
 
       // [BUG-008 FIX] Ne jamais renvoyer le hash du mot de passe
-      res.status(201).json({ user: sanitizeUser(user), token });
+      res.status(201).json({ user: await sanitizeUser(user), token });
     } catch (error) {
       next(error);
     }
@@ -47,7 +53,7 @@ class AuthController {
       const token = signToken({ id: user.id, role: user.role });
 
       // [BUG-008 FIX] Ne jamais renvoyer le hash du mot de passe
-      res.status(200).json({ user: sanitizeUser(user), token });
+      res.status(200).json({ user: await sanitizeUser(user), token });
     } catch (error) {
       next(error);
     }
@@ -58,7 +64,8 @@ class AuthController {
       const user = await User.findByPk(req.user.id, {
         attributes: { exclude: ['password'] }
       });
-      res.status(200).json(user);
+      if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
+      res.status(200).json(await sanitizeUser(user));
     } catch (error) {
       next(error);
     }

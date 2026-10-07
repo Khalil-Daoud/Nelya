@@ -80,6 +80,13 @@ async function startServer() {
     }
 
     try {
+      await sequelize.query('ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "permission_group_id" VARCHAR(64)');
+      console.log('Schema migration applied (users.permission_group_id).');
+    } catch (e) {
+      console.warn('Migration users.permission_group_id skipped:', e.message);
+    }
+
+    try {
       await sequelize.query('ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "public_token" VARCHAR(64)');
       await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS "orders_public_token_idx" ON "orders" ("public_token")');
       console.log('Schema migration applied (orders.public_token).');

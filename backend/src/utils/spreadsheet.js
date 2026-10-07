@@ -1,6 +1,13 @@
-const XLSX = require('xlsx');
+function loadXlsx() {
+  try {
+    return require('xlsx');
+  } catch {
+    throw new Error('Le module Excel (xlsx) n’est pas installé sur le serveur.');
+  }
+}
 
 function parseSpreadsheet(buffer) {
+  const XLSX = loadXlsx();
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false });
   if (!workbook.SheetNames.length) {
     throw new Error('Le classeur Excel est vide.');

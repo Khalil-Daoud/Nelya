@@ -42,9 +42,11 @@ export interface OrderSuccessDialogData {
       <p class="points-won" *ngIf="data.pointsAwarded">
         Vous avez gagné <strong>{{ data.pointsAwarded }} point{{ data.pointsAwarded > 1 ? 's' : '' }}</strong> fidélité.
       </p>
-      <p class="mail-note" *ngIf="data.trackingUrl">
+      <p class="mail-note" *ngIf="data.emailed">
         Un récapitulatif (numéro, détail et lien de suivi) part vers votre email.
-        Conservez aussi le lien ci-dessous : le statut s’y met à jour.
+      </p>
+      <p class="mail-note" *ngIf="data.trackingUrl">
+        Votre commande est enregistrée en attente. Conservez le lien ci-dessous : le statut s’y met à jour.
       </p>
 
       <a *ngIf="data.trackingUrl" mat-stroked-button class="track-btn" [href]="data.trackingUrl">
@@ -53,9 +55,8 @@ export interface OrderSuccessDialogData {
 
       <div *ngIf="data.whatsappLink" class="wa-invite">
         <p>
-          Dernière étape : envoyez-nous le récapitulatif sur WhatsApp pour que nous
-          puissions confirmer la livraison avec vous. Le message est déjà rédigé,
-          il ne vous reste qu'à appuyer sur « Envoyer ».
+          Si vous avez WhatsApp, vous pouvez aussi nous envoyer le récapitulatif.
+          Ce n’est pas obligatoire : la commande est déjà enregistrée.
         </p>
         <a mat-raised-button class="wa-btn" [href]="data.whatsappLink" target="_blank" rel="noopener"
            (click)="dialogRef.close(true)">
@@ -341,7 +342,7 @@ export class CartComponent implements OnInit {
    */
   private buildWhatsAppLink(order: any, form: any, isGuest: boolean): string {
     const wa = this.settings.whatsapp;
-    if (!wa.number || wa.autoSend) return '';
+    if (!wa.number || !wa.invite || wa.autoSend) return '';
 
     const symbol = this.settings.currency.symbol;
     const amount = (value: any) =>

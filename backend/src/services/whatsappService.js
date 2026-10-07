@@ -207,8 +207,9 @@ class WhatsAppService {
   }
 
   async sendCustomerConfirmation(order, trackingLink = '') {
+    const invite = await settingsService.getWhatsAppInvite();
     const enabled = await settingsService.getNotifyCustomer();
-    if (!enabled || !settingsService.isCustomerProviderConfigured()) return false;
+    if (!invite || !enabled || !settingsService.isCustomerProviderConfigured()) return false;
 
     const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
     const firstName = customerFirstName(order);
@@ -230,8 +231,9 @@ class WhatsAppService {
 
   async sendCustomerStatus(order, trackingLink = '') {
     if (!settingsService.isCustomerProviderConfigured()) return false;
+    const invite = await settingsService.getWhatsAppInvite();
     const enabled = await settingsService.getNotifyCustomer();
-    if (!enabled) return false;
+    if (!invite || !enabled) return false;
 
     const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
     return this.sendToCustomer(

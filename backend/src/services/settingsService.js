@@ -65,6 +65,18 @@ async function setNotifyCustomer(enabled) {
   return enabled;
 }
 
+// Proposer WhatsApp au client après commande (lien wa.me). Activé par défaut.
+async function getWhatsAppInvite() {
+  const setting = await Setting.findByPk('whatsapp_invite');
+  if (!setting) return true;
+  return setting.value === 'true';
+}
+
+async function setWhatsAppInvite(enabled) {
+  await Setting.upsert({ key: 'whatsapp_invite', value: enabled ? 'true' : 'false' });
+  return enabled;
+}
+
 async function getLoyaltyTiers() {
   const setting = await Setting.findByPk('loyalty_tiers');
   if (!setting?.value) return loyaltyService.DEFAULT_TIERS;
@@ -93,11 +105,12 @@ function isCustomerProviderConfigured() {
 
 // Réponse publique : aucun secret, uniquement ce dont la boutique a besoin côté navigateur.
 async function getPublicSettings() {
-  const [currency, guestCheckout, whatsappNumber, notifyCustomer, loyaltyTiers] = await Promise.all([
+  const [currency, guestCheckout, whatsappNumber, notifyCustomer, whatsappInvite, loyaltyTiers] = await Promise.all([
     getCurrency(),
     getGuestCheckout(),
     getWhatsAppNumber(),
     getNotifyCustomer(),
+    getWhatsAppInvite(),
     getLoyaltyTiers()
   ]);
 
@@ -109,10 +122,11 @@ async function getPublicSettings() {
     loyalty: { tiers: loyaltyTiers },
     whatsapp: {
       number: whatsappNumber,
+      invite: whatsappInvite,
       notifyCustomer,
       providerReady,
       // Quand l'envoi automatique fonctionne, le site n'a plus besoin de rediriger le client.
-      autoSend: notifyCustomer && providerReady
+      autoSend: whatsappInvite && notifyCustomer && providerReady
     }
   };
 }
@@ -126,6 +140,8 @@ module.exports = {
   setWhatsAppNumber,
   getNotifyCustomer,
   setNotifyCustomer,
+  getWhatsAppInvite,
+  setWhatsAppInvite,
   getLoyaltyTiers,
   setLoyaltyTiers,
   isCustomerProviderConfigured,

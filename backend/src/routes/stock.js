@@ -1,5 +1,5 @@
 const express = require('express');
-const { auth, authorize } = require('../middlewares/auth');
+const { auth, authorize, requirePermission } = require('../middlewares/auth');
 const { Product, sequelize } = require('../models');
 
 const router = express.Router();
@@ -37,7 +37,7 @@ router.get('/stock-summary', auth, authorize('admin', 'seller'), async (req, res
 });
 
 // Ajustement isolé : { stock } pose la quantité, { delta } l'incrémente (verrou ligne).
-router.patch('/:id/stock', auth, authorize('admin', 'seller'), async (req, res) => {
+router.patch('/:id/stock', auth, authorize('admin', 'seller'), requirePermission('stock.manage'), async (req, res) => {
   try {
     const updated = await sequelize.transaction(async (t) => {
       const product = await Product.findByPk(req.params.id, {

@@ -21,11 +21,6 @@ function toHttpParams(params: QueryParams = {}): HttpParams {
 })
 export class ApiService {
   private baseUrl = (() => {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
-      return 'http://localhost:3000/api';
-    }
-    // Même origine derrière nginx, ou hôte API explicite.
     const origin = API_BASE_URL.replace(/\/$/, '');
     return origin ? `${origin}/api` : '/api';
   })();
