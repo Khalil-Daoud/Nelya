@@ -108,7 +108,7 @@ async function startServer() {
       console.log(`Base de données déjà initialisée (${productCount} produits).`);
     }
 
-    httpServer = app.listen(PORT, () => {
+    httpServer = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server is running on port ${PORT}`);
     });
 

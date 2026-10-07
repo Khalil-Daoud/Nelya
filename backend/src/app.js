@@ -25,8 +25,17 @@ app.use(helmet({
   },
 }));
 // [BUG-004 FIX] CORS restreint - mettre l'URL frontend dans ALLOWED_ORIGIN
+const allowedOrigins = (process.env.ALLOWED_ORIGIN || 'http://localhost:4200')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN || 'http://localhost:4200',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Origine CORS refusée'));
+  },
   credentials: true
 }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
