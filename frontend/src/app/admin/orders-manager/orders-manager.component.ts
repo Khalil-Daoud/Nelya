@@ -109,6 +109,12 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
                     <p><strong>Paiement :</strong> {{getPayment(order)}}</p>
                   </div>
                   <div class="detail-block">
+                    <h4>Fidélité</h4>
+                    <p *ngIf="order.points_awarded > 0"><strong>+{{ order.points_awarded }} pts</strong> attribués</p>
+                    <p *ngIf="!order.points_awarded">Aucun point (invité ou hors palier)</p>
+                    <p *ngIf="order.User?.loyalty_points != null">Solde client : {{ order.User.loyalty_points }} pts</p>
+                  </div>
+                  <div class="detail-block">
                     <h4>Statut</h4>
                     <mat-select class="status-select" [value]="order.status" (selectionChange)="updateStatus(order, $event.value)">
                       <mat-option *ngFor="let s of statuses" [value]="s">{{translateStatus(s)}}</mat-option>
@@ -169,7 +175,7 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     </div>
   `,
   styles: [`
-    .manager-container { padding: 40px; }
+    .manager-container { padding: 0; min-width: 0; }
     .header { margin-bottom: 30px; }
     .header h2 { font-size: 2.5rem; margin-bottom: 10px; }
     .header p { color: #666; font-weight: 300; }
@@ -179,8 +185,8 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     .status-field { width: 220px; }
     .result-count { color: var(--luxe-text-muted); font-size: 0.85rem; }
 
-    .table-wrapper { border-radius: 12px; overflow: hidden; background: white; }
-    .luxe-table { width: 100%; background: transparent; }
+    .table-wrapper { border-radius: 12px; overflow-x: auto; background: white; }
+    .luxe-table { width: 100%; min-width: 720px; background: transparent; }
 
     th.mat-header-cell { color: #1a1a1a; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; padding: 20px; }
     td.mat-cell { padding: 16px 20px; color: #444; font-weight: 300; }
@@ -220,8 +226,9 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     .empty-state mat-icon { font-size: 3rem; width: 48px; height: 48px; margin-bottom: 15px; }
 
     @media (max-width: 960px) {
-      .manager-container { padding: 20px; }
       .detail-grid { grid-template-columns: 1fr; }
+      .search-field, .status-field { width: 100%; }
+      .header h2 { font-size: 1.8rem; }
     }
   `]
 })

@@ -1,10 +1,22 @@
 # [BUG-002 FIX] Ne jamais commiter les secrets ou dépendances
 
-# Variables d'environnement (SECRETS)
+# Variables d'environnement (SECRETS) — jamais sur GitHub
 .env
 .env.local
 .env.production
 .env.*.local
+docker/.env
+backend/.env
+
+# Fichiers d'infra Railway (IDs de service, pas le code métier)
+_railway_vars.json
+_railway_mutation.graphql
+
+# Certificats et clés privées
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Dépendances
 node_modules/
@@ -12,6 +24,10 @@ node_modules/
 
 # Build Angular
 frontend/dist/
+frontend/.angular/cache/
+
+# Images WebP générées par les tests d'upload
+backend/src/img/product_*.webp
 
 # Logs
 *.log

@@ -109,7 +109,7 @@ const PERIODS: Period[] = [
     </div>
   `,
   styles: [`
-    .dashboard-container { padding: 40px; min-height: 100vh; }
+    .dashboard-container { padding: 0; min-width: 0; }
     .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 50px; flex-wrap: wrap; }
     .header h1 { font-size: 2.8rem; margin-bottom: 10px; font-family: var(--font-heading); color: var(--luxe-black); }
     .header p { color: var(--luxe-text-muted); font-size: 1.05rem; font-weight: 300; margin: 0; }
@@ -124,7 +124,7 @@ const PERIODS: Period[] = [
     .period-btn:hover { color: var(--luxe-charcoal); }
     .period-btn.active { background: var(--luxe-black); color: var(--luxe-white); box-shadow: var(--shadow-card); }
 
-    .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 30px; margin-bottom: 50px; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 30px; margin-bottom: 50px; }
     .metric-card { background: var(--luxe-white); padding: 30px; border-radius: var(--radius-md); border: 1px solid var(--luxe-border); display: flex; gap: 20px; align-items: center; box-shadow: var(--shadow-subtle); transition: var(--transition-smooth); }
     .metric-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
     .metric-icon { width: 55px; height: 55px; border-radius: var(--radius-md); background: var(--luxe-offwhite); color: var(--luxe-charcoal); border: 1px solid var(--luxe-border); display: flex; align-items: center; justify-content: center; }
@@ -159,11 +159,15 @@ const PERIODS: Period[] = [
     .view-all:hover { background: var(--luxe-black) !important; color: var(--luxe-white) !important; }
 
     @media (max-width: 1200px) {
-      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+      .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .charts-row { grid-template-columns: 1fr; }
-      .dashboard-container { padding: 20px; }
       .header { flex-direction: column; }
       .period-filter { width: 100%; overflow-x: auto; }
+    }
+    @media (max-width: 640px) {
+      .metrics-grid { grid-template-columns: 1fr; gap: 12px; }
+      .header h1 { font-size: 1.8rem; }
+      .metric-card { padding: 18px; }
     }
   `]
 })

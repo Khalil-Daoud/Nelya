@@ -9,13 +9,23 @@ export interface User {
   last_name: string;
   email: string;
   role: 'admin' | 'seller' | 'client';
+  loyalty_points?: number;
+  created_at?: string;
+  createdAt?: string;
 }
 
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000/api/auth' : `${API_BASE_URL}/api/auth`;
+  private apiUrl = (() => {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return 'http://localhost:3000/api/auth';
+    }
+    const origin = API_BASE_URL.replace(/\/$/, '');
+    return origin ? `${origin}/api/auth` : '/api/auth';
+  })();
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   public currentUser$ = this.currentUserSubject.asObservable();
 
@@ -42,6 +52,27 @@ export class AuthService {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     this.currentUserSubject.next(null);
+  }
+
+  refreshMe(): Promise<User | null> {
+    if (!this.isLoggedIn) return Promise.resolve(null);
+    return new Promise(resolve => {
+      this.http.get<User>(`${this.apiUrl}/me`).subscribe({
+        next: user => {
+          this.patchCurrentUser(user);
+          resolve(user);
+        },
+        error: () => resolve(this.currentUserSubject.value)
+      });
+    });
+  }
+
+  patchCurrentUser(partial: Partial<User> | User) {
+    const current = this.currentUserSubject.value;
+    if (!current && !(partial as User)?.id) return;
+    const next = { ...(current || {}), ...partial } as User;
+    localStorage.setItem('user', JSON.stringify(next));
+    this.currentUserSubject.next(next);
   }
 
   private setSession(authResult: any) {

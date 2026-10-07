@@ -12,7 +12,6 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ImageUrlPipe } from '../pipes/image-url.pipe';
 import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
@@ -26,6 +25,7 @@ export interface CheckoutDialogData {
 export interface OrderSuccessDialogData {
   /** Lien wa.me pré-rempli, vide si la boutique n'a pas de numéro WhatsApp */
   whatsappLink: string;
+  pointsAwarded?: number;
 }
 
 @Component({
@@ -37,6 +37,9 @@ export interface OrderSuccessDialogData {
       <div class="success-icon"><mat-icon>check_circle</mat-icon></div>
       <h2>Commande enregistrée</h2>
       <p class="lead">Merci ! Votre commande nous est bien parvenue.</p>
+      <p class="points-won" *ngIf="data.pointsAwarded">
+        Vous avez gagné <strong>{{ data.pointsAwarded }} point{{ data.pointsAwarded > 1 ? 's' : '' }}</strong> fidélité.
+      </p>
 
       <div *ngIf="data.whatsappLink" class="wa-invite">
         <p>
@@ -60,6 +63,8 @@ export interface OrderSuccessDialogData {
     .success-icon mat-icon { font-size: 56px; width: 56px; height: 56px; color: #25D366; }
     h2 { font-family: var(--font-heading); font-size: 1.9rem; color: var(--luxe-black); margin: 14px 0 8px; font-weight: 400; }
     .lead { color: var(--luxe-text-muted); font-weight: 300; margin: 0 0 24px; }
+    .points-won { color: var(--luxe-charcoal); font-size: 0.95rem; margin: -10px 0 22px; }
+    .points-won strong { color: var(--luxe-gold); }
     .wa-invite { background: var(--luxe-offwhite); border: 1px solid var(--luxe-border); border-radius: var(--radius-md); padding: 22px 20px; margin-bottom: 14px; }
     .wa-invite p { font-size: 0.86rem; font-weight: 300; line-height: 1.65; color: var(--luxe-charcoal); margin: 0 0 20px; }
     .wa-btn { background: #25D366 !important; color: #fff !important; width: 100%; height: 50px; letter-spacing: 1px; font-weight: 500; }
@@ -77,7 +82,7 @@ export class OrderSuccessDialogComponent {
 @Component({
   selector: 'app-checkout-dialog',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatIconModule, ReactiveFormsModule, MatDialogModule],
+  imports: [CommonModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatIconModule, ReactiveFormsModule, MatDialogModule],
   template: `
     <h2 mat-dialog-title class="luxury-title" style="margin-bottom: 20px; text-align: center; font-size: 2rem;">Valider la commande</h2>
     <mat-dialog-content>
@@ -108,51 +113,27 @@ export class OrderSuccessDialogComponent {
           <input matInput formControlName="phone" placeholder="Ex: +216 20 000 000">
         </mat-form-field>
 
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Méthode de paiement</mat-label>
-          <mat-select formControlName="paymentMethod">
-            <mat-option value="cash">
-              <mat-icon>local_shipping</mat-icon> Espèces à la livraison
-            </mat-option>
-            <mat-option value="card">
-              <mat-icon>credit_card</mat-icon> Carte Bancaire
-            </mat-option>
-          </mat-select>
-        </mat-form-field>
-
-        <div *ngIf="checkoutForm.get('paymentMethod')?.value === 'card'" class="card-info fade-in">
-          <div class="card-row">
-            <mat-form-field appearance="outline" style="flex: 2;">
-              <mat-label>Numéro de carte</mat-label>
-              <input matInput formControlName="cardNumber" placeholder="0000 0000 0000 0000">
-            </mat-form-field>
-            <mat-form-field appearance="outline" style="flex: 1;">
-              <mat-label>Expiration</mat-label>
-              <input matInput formControlName="cardExpiry" placeholder="MM/YY">
-            </mat-form-field>
-            <mat-form-field appearance="outline" style="flex: 1;">
-              <mat-label>CVC</mat-label>
-              <input matInput type="password" formControlName="cardCvc" placeholder="123">
-            </mat-form-field>
-          </div>
-        </div>
+        <p class="pay-note">
+          <mat-icon>local_shipping</mat-icon>
+          Paiement en espèces à la livraison. Nous ne collectons pas de numéro de carte.
+        </p>
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end" style="padding-bottom: 20px; padding-right: 20px;">
       <button mat-button mat-dialog-close>Annuler</button>
-      <button mat-raised-button color="primary" [disabled]="checkoutForm.invalid" (click)="submit()">Confirmer et Payer</button>
+      <button mat-raised-button color="primary" [disabled]="checkoutForm.invalid" (click)="submit()">Confirmer la commande</button>
     </mat-dialog-actions>
   `,
   styles: [`
     .luxury-title { font-family: var(--font-heading); color: var(--luxe-black); }
     .checkout-form { padding-top: 10px; min-width: 450px; }
     .full-width { width: 100%; margin-bottom: 15px; }
-    .card-info { background: var(--luxe-offwhite); padding: 25px 20px 10px 20px; border-radius: var(--radius-md); margin-bottom: 20px; border: 1px solid var(--luxe-border); }
-    .card-row { display: flex; gap: 15px; }
+    .pay-note { display: flex; align-items: flex-start; gap: 10px; margin: 4px 0 12px; font-size: 0.86rem; font-weight: 300; color: var(--luxe-charcoal); line-height: 1.5; }
+    .pay-note mat-icon { font-size: 20px; width: 20px; height: 20px; color: var(--luxe-gold); flex-shrink: 0; }
     .guest-block { background: var(--luxe-offwhite); padding: 20px 20px 5px 20px; border-radius: var(--radius-md); margin-bottom: 20px; border: 1px solid var(--luxe-border); }
     .guest-note { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; font-size: 0.85rem; font-weight: 300; color: var(--luxe-text-muted); line-height: 1.5; }
     .guest-note mat-icon { font-size: 20px; width: 20px; height: 20px; color: var(--luxe-gold); flex-shrink: 0; }
-    @media (max-width: 600px) { .checkout-form { min-width: 100%; } .card-row { flex-direction: column; gap: 0; } }
+    @media (max-width: 600px) { .checkout-form { min-width: 100%; } }
   `]
 })
 export class CheckoutDialogComponent {
@@ -167,24 +148,7 @@ export class CheckoutDialogComponent {
       guestName: ['', data.guest ? [Validators.required] : []],
       guestEmail: ['', [Validators.email]],
       address: ['', Validators.required],
-      phone: ['', Validators.required],
-      paymentMethod: ['cash', Validators.required],
-      cardNumber: [''],
-      cardExpiry: [''],
-      cardCvc: ['']
-    });
-
-    this.checkoutForm.get('paymentMethod')?.valueChanges.subscribe(method => {
-      const cardControls = ['cardNumber', 'cardExpiry', 'cardCvc'];
-      if (method === 'card') {
-        cardControls.forEach(c => this.checkoutForm.get(c)?.setValidators([Validators.required]));
-      } else {
-        cardControls.forEach(c => {
-          this.checkoutForm.get(c)?.clearValidators();
-          this.checkoutForm.get(c)?.setValue('');
-        });
-      }
-      cardControls.forEach(c => this.checkoutForm.get(c)?.updateValueAndValidity());
+      phone: ['', Validators.required]
     });
   }
 
@@ -247,6 +211,14 @@ export class CheckoutDialogComponent {
               <span>Total</span>
               <span>{{total | formatCurrency}}</span>
             </div>
+            <div class="loyalty-hint" *ngIf="currentUser?.role === 'client' && estimatedPoints > 0">
+              <mat-icon>stars</mat-icon>
+              Cette commande vous rapportera <strong>{{ estimatedPoints }} pts</strong>
+            </div>
+            <div class="loyalty-hint guest" *ngIf="!currentUser">
+              <mat-icon>stars</mat-icon>
+              Créez un compte pour gagner des points à chaque achat.
+            </div>
             <button mat-raised-button color="primary" class="checkout-btn" (click)="checkout()">PASSER LA COMMANDE</button>
           </mat-card>
         </div>
@@ -292,6 +264,15 @@ export class CheckoutDialogComponent {
     .summary-row { display: flex; justify-content: space-between; margin: 25px 0; color: var(--luxe-charcoal); font-size: 1.05rem; }
     hr { border: none; border-top: 1px solid var(--luxe-border); margin: 30px 0; }
     .total { font-weight: 500; font-size: 1.6rem; color: var(--luxe-black); font-family: var(--font-heading); }
+    .loyalty-hint {
+      display: flex; align-items: flex-start; gap: 8px;
+      margin-top: 8px; padding: 12px 14px; border-radius: var(--radius-sm);
+      background: var(--luxe-white); border: 1px solid var(--luxe-border);
+      color: var(--luxe-charcoal); font-size: 0.85rem; line-height: 1.45;
+    }
+    .loyalty-hint mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--luxe-gold); }
+    .loyalty-hint strong { color: var(--luxe-black); }
+    .loyalty-hint.guest { color: var(--luxe-text-muted); }
     .checkout-btn { width: 100%; margin-top: 30px; height: 60px; letter-spacing: 3px !important; font-weight: 500; border-radius: var(--radius-sm) !important; }
 
     .empty-state { text-align: center; padding: 120px 20px; border-radius: var(--radius-md); border: 1px dashed var(--luxe-border); margin-top: 60px; }
@@ -311,6 +292,7 @@ export class CheckoutDialogComponent {
 export class CartComponent implements OnInit {
   items: CartItem[] = [];
   total = 0;
+  estimatedPoints = 0;
   currentUser: any = null;
   guestCheckoutEnabled = false;
 
@@ -328,6 +310,7 @@ export class CartComponent implements OnInit {
     this.cartService.cartItems$.subscribe(items => {
       this.items = items;
       this.total = this.cartService.totalAmount;
+      this.estimatedPoints = this.settings.pointsForItems(items);
     });
 
     this.authService.currentUser$.subscribe(user => {
@@ -409,7 +392,7 @@ export class CartComponent implements OnInit {
           items: this.items.map(i => ({ product_id: i.id, quantity: i.quantity })),
           shipping_address: result.address,
           phone: result.phone,
-          notes: `Téléphone: ${result.phone} | Paiement: ${result.paymentMethod === 'card' ? 'Carte Bancaire' : 'Espèces'}`
+          notes: `Téléphone: ${result.phone} | Paiement: Espèces à la livraison`
         };
 
         if (isGuest) {
@@ -419,13 +402,18 @@ export class CartComponent implements OnInit {
 
         this.crudService.create('orders', orderPayload).subscribe({
           next: (order: any) => {
-            // Le récapitulatif doit être construit avant de vider le panier.
+            const pointsAwarded = Number(order?.points_awarded) || 0;
+            if (pointsAwarded > 0 && order?.User?.loyalty_points != null) {
+              this.authService.patchCurrentUser({ loyalty_points: order.User.loyalty_points });
+            } else if (pointsAwarded > 0) {
+              this.authService.refreshMe();
+            }
             const whatsappLink = this.buildWhatsAppLink(order, result, isGuest);
             this.cartService.clearCart();
             this.dialog
               .open(OrderSuccessDialogComponent, {
                 panelClass: 'luxury-dialog',
-                data: { whatsappLink }
+                data: { whatsappLink, pointsAwarded }
               })
               .afterClosed()
               .subscribe(() => this.router.navigate([isGuest ? '/collection' : '/profile']));

@@ -104,11 +104,11 @@ import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } 
     </div>
   `,
   styles: [`
-    .manager-container { padding: 20px; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; gap: 20px; }
+    .manager-container { padding: 0; min-width: 0; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; gap: 20px; flex-wrap: wrap; }
     .header h2 { font-size: 2rem; margin-bottom: 8px; }
     .header p { color: #666; font-weight: 300; margin: 0; }
-    .table-card { border-radius: 15px; overflow: hidden; }
+    .table-card { border-radius: 15px; overflow-x: auto; }
     .form-card { border-radius: 15px; padding: 20px; margin-bottom: 30px; }
     .full-width { width: 100%; }
     .form-actions { display: flex; justify-content: flex-end; margin-top: 15px; }
@@ -118,7 +118,8 @@ import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } 
 })
 export class CategoriesManagerComponent implements OnInit {
   categories: any[] = [];
-  products: any[] = [];
+  /** Nombre de produits par nom de catégorie, calculé par l'API. */
+  productCounts: Record<string, number> = {};
   displayedColumns = ['name', 'description', 'count', 'actions'];
 
   categoryForm!: FormGroup;
@@ -153,11 +154,20 @@ export class CategoriesManagerComponent implements OnInit {
   }
 
   loadProducts() {
-    this.crud.getAll<any>('products').subscribe(data => this.products = data);
+    // Le compteur par catégorie est un agrégat SQL : inutile de rapatrier les produits.
+    this.crud.getAll<any>('products/meta').subscribe({
+      next: (meta: any) => {
+        this.productCounts = {};
+        for (const cat of meta.categories || []) {
+          this.productCounts[cat.name] = cat.count;
+        }
+      },
+      error: () => { this.productCounts = {}; }
+    });
   }
 
   productCount(categoryName: string): number {
-    return this.products.filter(p => p.category === categoryName).length;
+    return this.productCounts[categoryName] || 0;
   }
 
   toggleForm() {

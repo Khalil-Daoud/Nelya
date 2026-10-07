@@ -1,18 +1,39 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from '../config';
+
+export type QueryParams = Record<string, string | number | boolean | null | undefined>;
+
+// Les valeurs vides sont écartées : un filtre non renseigné ne doit pas se retrouver
+// dans l'URL sous la forme ?category= et être interprété comme un filtre actif.
+function toHttpParams(params: QueryParams = {}): HttpParams {
+  let httpParams = new HttpParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined || value === '') continue;
+    httpParams = httpParams.set(key, String(value));
+  }
+  return httpParams;
+}
 
 @Injectable({
   providedIn: 'root'
 })
 export class ApiService {
-  private baseUrl = window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : `${API_BASE_URL}/api`;
+  private baseUrl = (() => {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return 'http://localhost:3000/api';
+    }
+    // Même origine derrière nginx, ou hôte API explicite.
+    const origin = API_BASE_URL.replace(/\/$/, '');
+    return origin ? `${origin}/api` : '/api';
+  })();
 
   constructor(private http: HttpClient) {}
 
-  get<T>(endpoint: string): Observable<T> {
-    return this.http.get<T>(`${this.baseUrl}/${endpoint}`);
+  get<T>(endpoint: string, params?: QueryParams): Observable<T> {
+    return this.http.get<T>(`${this.baseUrl}/${endpoint}`, { params: toHttpParams(params) });
   }
 
   getById<T>(endpoint: string, id: string): Observable<T> {
@@ -29,6 +50,10 @@ export class ApiService {
 
   putTo<T>(endpoint: string, data: any): Observable<T> {
     return this.http.put<T>(`${this.baseUrl}/${endpoint}`, data);
+  }
+
+  patch<T>(endpoint: string, data: any): Observable<T> {
+    return this.http.patch<T>(`${this.baseUrl}/${endpoint}`, data);
   }
 
   delete(endpoint: string, id: string): Observable<any> {

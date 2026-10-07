@@ -23,7 +23,7 @@ import { PaginationComponent } from '../../components/pagination/pagination.comp
     <mat-dialog-content>
       <form [formGroup]="resetForm" class="reset-form">
         <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Nouveau mot de passe (min. 6 caractères)</mat-label>
+          <mat-label>Nouveau mot de passe (min. 10 caractères)</mat-label>
           <input matInput type="password" formControlName="password">
         </mat-form-field>
         <mat-form-field appearance="outline" class="full-width">
@@ -51,7 +51,7 @@ export class ResetPasswordDialogComponent {
 
   constructor(private fb: FormBuilder, public dialogRef: MatDialogRef<ResetPasswordDialogComponent>) {
     this.resetForm = this.fb.group({
-      password: ['', [Validators.required, Validators.minLength(6)]],
+      password: ['', [Validators.required, Validators.minLength(10)]],
       confirm: ['', [Validators.required]]
     });
   }
@@ -157,6 +157,14 @@ export class ResetPasswordDialogComponent {
             </td>
           </ng-container>
 
+          <ng-container matColumnDef="points">
+            <th mat-header-cell *matHeaderCellDef> Points </th>
+            <td mat-cell *matCellDef="let user">
+              <span *ngIf="user.role === 'client'">{{ user.loyalty_points || 0 }}</span>
+              <span *ngIf="user.role !== 'client'" class="user-email">—</span>
+            </td>
+          </ng-container>
+
           <ng-container matColumnDef="created">
             <th mat-header-cell *matHeaderCellDef> Créé le </th>
             <td mat-cell *matCellDef="let user"> {{formatDate(user.createdAt)}} </td>
@@ -189,7 +197,7 @@ export class ResetPasswordDialogComponent {
     </div>
   `,
   styles: [`
-    .manager-container { padding: 40px; }
+    .manager-container { padding: 0; min-width: 0; }
     .header { margin-bottom: 30px; }
     .header h2 { font-size: 2.5rem; margin-bottom: 10px; }
     .header p { color: #666; font-weight: 300; }
@@ -204,8 +212,8 @@ export class ResetPasswordDialogComponent {
     .create-form h3 { margin: 0 0 18px; font-size: 1.1rem; font-weight: 600; }
     .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
 
-    .table-wrapper { border-radius: 12px; overflow: hidden; background: white; }
-    .luxe-table { width: 100%; background: transparent; }
+    .table-wrapper { border-radius: 12px; overflow-x: auto; background: white; }
+    .luxe-table { width: 100%; min-width: 640px; background: transparent; }
     th.mat-header-cell { color: #1a1a1a; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; padding: 20px; }
     td.mat-cell { padding: 14px 20px; color: #444; font-weight: 300; }
 
@@ -220,7 +228,9 @@ export class ResetPasswordDialogComponent {
     .empty-state mat-icon { font-size: 3rem; width: 48px; height: 48px; margin-bottom: 12px; }
 
     @media (max-width: 768px) {
-      .manager-container { padding: 20px; }
+      .header h2 { font-size: 1.8rem; }
+      .search-field { width: 100%; min-width: 0; }
+      .tabs { width: 100%; overflow-x: auto; }
     }
   `]
 })
@@ -229,7 +239,7 @@ export class UsersManagerComponent implements OnInit {
   filteredUsers: any[] = [];
   filter: 'all' | 'client' | 'employee' = 'all';
   showForm = false;
-  displayedColumns: string[] = ['username', 'role', 'created', 'actions'];
+  displayedColumns: string[] = ['username', 'role', 'points', 'created', 'actions'];
 
   newUser: any = { first_name: '', last_name: '', email: '', password: '', role: 'client' };
   searchTerm = '';
@@ -300,7 +310,7 @@ export class UsersManagerComponent implements OnInit {
 
   get canCreate(): boolean {
     return !!this.newUser.first_name && !!this.newUser.last_name &&
-      !!this.newUser.email && !!this.newUser.password && this.newUser.password.length >= 6;
+      !!this.newUser.email && !!this.newUser.password && this.newUser.password.length >= 10;
   }
 
   createUser() {

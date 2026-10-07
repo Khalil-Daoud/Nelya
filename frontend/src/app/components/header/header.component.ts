@@ -56,6 +56,11 @@ import { CrudService } from '../../services/crud.service';
             <mat-icon [matBadge]="cartCount" matBadgeColor="warn">shopping_bag_outlined</mat-icon>
           </button>
 
+          <a class="luxe-points" routerLink="/profile" *ngIf="isLoggedIn && loyaltyPoints !== null" [attr.aria-label]="loyaltyPoints + ' points fidélité'">
+            <mat-icon>stars</mat-icon>
+            <span>{{ loyaltyPoints }}</span>
+          </a>
+
           <button mat-icon-button class="luxe-icon-btn" [matMenuTriggerFor]="profileMenu" *ngIf="isLoggedIn" aria-label="Mon compte">
             <mat-icon>person_outline</mat-icon>
           </button>
@@ -123,6 +128,16 @@ import { CrudService } from '../../services/crud.service';
     }
     .luxe-icon-btn:hover { background: var(--luxe-offwhite); color: var(--luxe-gold); }
     .luxe-icon-btn mat-icon { font-size: 24px; width: 24px; height: 24px; }
+    .luxe-points {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 12px; border-radius: var(--radius-pill);
+      background: var(--luxe-offwhite); border: 1px solid var(--luxe-border);
+      color: var(--luxe-black); text-decoration: none;
+      font-size: 0.78rem; font-weight: 700; letter-spacing: 0.4px;
+      transition: border-color 0.3s ease, color 0.3s ease;
+    }
+    .luxe-points mat-icon { font-size: 16px; width: 16px; height: 16px; color: var(--luxe-gold); }
+    .luxe-points:hover { border-color: var(--luxe-gold); color: var(--luxe-gold); }
     .luxe-burger { display: none; }
 
     .luxe-searchbar {
@@ -187,6 +202,7 @@ export class HeaderComponent implements OnInit {
   wishlistCount = 0;
   isLoggedIn = false;
   isAdmin = false;
+  loyaltyPoints: number | null = null;
   categories: string[] = [];
   scrolled = false;
   mobileOpen = false;
@@ -205,9 +221,11 @@ export class HeaderComponent implements OnInit {
       this.cartCount = items.reduce((acc, i) => acc + i.quantity, 0);
     });
     this.wishlistService.ids$.subscribe(ids => { this.wishlistCount = ids.length; });
+    this.authService.refreshMe();
     this.authService.currentUser$.subscribe(user => {
       this.isLoggedIn = !!user;
       this.isAdmin = user?.role === 'admin';
+      this.loyaltyPoints = user?.role === 'client' ? Number(user.loyalty_points || 0) : null;
     });
     this.crudService.getAll<any>('categories').subscribe({
       next: categories => {

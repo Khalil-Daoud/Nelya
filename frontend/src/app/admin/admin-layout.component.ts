@@ -1,21 +1,24 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router, NavigationEnd } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatBadgeModule } from '@angular/material/badge';
 import { filter } from 'rxjs/operators';
 import { AuthService, User } from '../services/auth.service';
+import { OrderAlert, OrderInboxService } from '../services/order-inbox.service';
+import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
 
 const COLLAPSE_KEY = 'nelya_admin_collapsed';
 
 @Component({
   selector: 'app-admin-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, MatIconModule, MatButtonModule, MatTooltipModule, MatMenuModule],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, MatIconModule, MatButtonModule, MatTooltipModule, MatMenuModule, MatBadgeModule, FormatCurrencyPipe],
   template: `
-    <div class="admin-shell">
+    <div class="admin-shell" (click)="unlockAlerts()">
       <aside class="sidebar" [class.collapsed]="collapsed" [class.open]="sidebarOpen">
         <div class="sidebar-brand">
           <span class="brand-logo" routerLink="/">NELYA</span>
@@ -28,12 +31,16 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
             <span>Vue d'ensemble</span>
           </a>
           <a routerLink="/admin/orders" routerLinkActive="active" class="nav-item" matTooltip="Commandes" matTooltipPosition="right">
-            <mat-icon>shopping_cart</mat-icon>
+            <mat-icon [matBadge]="pendingOrders || null" matBadgeColor="warn" matBadgeSize="small">shopping_cart</mat-icon>
             <span>Commandes</span>
           </a>
           <a routerLink="/admin/products" routerLinkActive="active" class="nav-item" matTooltip="Produits" matTooltipPosition="right">
             <mat-icon>inventory_2</mat-icon>
             <span>Produits</span>
+          </a>
+          <a routerLink="/admin/stock" routerLinkActive="active" class="nav-item" matTooltip="Stock" matTooltipPosition="right">
+            <mat-icon>warehouse</mat-icon>
+            <span>Stock</span>
           </a>
           <a routerLink="/admin/categories" routerLinkActive="active" class="nav-item" matTooltip="Catégories" matTooltipPosition="right">
             <mat-icon>category</mat-icon>
@@ -82,6 +89,10 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
           </div>
 
           <div class="topbar-right">
+            <button mat-icon-button class="topbar-icon-btn" (click)="toggleSound(); $event.stopPropagation()"
+              [matTooltip]="soundOn ? 'Couper le son des commandes' : 'Activer le son des commandes'">
+              <mat-icon>{{ soundOn ? 'volume_up' : 'volume_off' }}</mat-icon>
+            </button>
             <button mat-icon-button routerLink="/" matTooltip="Voir la boutique" class="topbar-icon-btn">
               <mat-icon>storefront</mat-icon>
             </button>
@@ -108,6 +119,15 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
           <router-outlet></router-outlet>
         </div>
       </main>
+
+      <button type="button" class="order-toast" *ngIf="orderAlert" (click)="openOrders()">
+        <mat-icon>notifications_active</mat-icon>
+        <span class="order-toast-text">
+          <strong>Nouvelle commande</strong>
+          <small>{{ orderAlert.customer }}<ng-container *ngIf="orderAlert.totalAmount != null"> · {{ orderAlert.totalAmount | formatCurrency }}</ng-container></small>
+        </span>
+        <mat-icon class="order-toast-close" (click)="dismissAlert($event)">close</mat-icon>
+      </button>
     </div>
   `,
   styles: [`
@@ -180,7 +200,20 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
     .user-chip-role { font-size: 0.66rem; color: var(--luxe-text-muted); text-transform: uppercase; letter-spacing: 1px; }
     .user-chip-caret { font-size: 18px; width: 18px; height: 18px; color: var(--luxe-text-muted); }
 
-    .admin-content { padding: 36px 32px 60px; flex: 1; }
+    .admin-content { padding: 24px 20px 40px; flex: 1; min-width: 0; width: 100%; }
+
+    .order-toast {
+      position: fixed; right: 28px; bottom: 28px; z-index: 1200;
+      display: flex; align-items: center; gap: 12px; text-align: left;
+      padding: 14px 16px; border-radius: 14px; cursor: pointer; border: none;
+      background: var(--luxe-black); color: var(--luxe-white);
+      font-family: var(--font-body); min-width: 280px; max-width: 380px;
+    }
+    .order-toast mat-icon { color: var(--luxe-gold); }
+    .order-toast-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+    .order-toast-text strong { font-size: 0.88rem; }
+    .order-toast-text small { font-size: 0.78rem; color: rgba(255,255,255,0.7); }
+    .order-toast-close { font-size: 18px; width: 18px; height: 18px; color: rgba(255,255,255,0.55) !important; }
 
     .sidebar-scrim { display: none; }
 
@@ -199,18 +232,32 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
       .sidebar.collapsed .admin-user { justify-content: flex-start; }
       .sidebar-scrim { display: block; position: fixed; inset: 0; background: rgba(10,10,10,0.45); z-index: 850; }
       .topbar { padding: 0 18px; }
-      .admin-content { padding: 26px 18px 50px; }
+      .admin-content { padding: 22px 16px 48px; }
       .user-chip-meta { display: none; }
+      .order-toast { left: 16px; right: 16px; min-width: 0; max-width: none; }
+    }
+    @media (max-width: 640px) {
+      .topbar { height: 64px; padding: 0 12px; }
+      .page-title h1 { font-size: 1.15rem; }
+      .admin-content { padding: 16px 12px 40px; }
+      .topbar-icon-btn:nth-of-type(2), .topbar-icon-btn:nth-of-type(3) { display: none; }
     }
   `]
 })
-export class AdminLayoutComponent implements OnInit {
+export class AdminLayoutComponent implements OnInit, OnDestroy {
   user: User | null = null;
   isAdmin = false;
   collapsed = false;
   sidebarOpen = false;
+  pendingOrders = 0;
+  orderAlert: OrderAlert | null = null;
+  soundOn = true;
 
-  constructor(private authService: AuthService, private router: Router) {}
+  constructor(
+    private authService: AuthService,
+    private router: Router,
+    private inbox: OrderInboxService
+  ) {}
 
   ngOnInit() {
     this.authService.currentUser$.subscribe(user => {
@@ -218,13 +265,47 @@ export class AdminLayoutComponent implements OnInit {
       this.isAdmin = user?.role === 'admin';
     });
     this.collapsed = localStorage.getItem(COLLAPSE_KEY) === '1';
-    this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe(() => {
+    this.soundOn = this.inbox.soundEnabled;
+    this.inbox.start();
+    this.inbox.pending$.subscribe(n => this.pendingOrders = n);
+    this.inbox.alert$.subscribe(a => this.orderAlert = a);
+    this.inbox.soundEnabled$.subscribe(on => this.soundOn = on);
+    this.router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)).subscribe(e => {
       this.sidebarOpen = false;
+      if (e.urlAfterRedirects.includes('/admin/orders')) this.inbox.dismissAlert();
     });
   }
 
+  ngOnDestroy() {
+    this.inbox.stop();
+  }
+
+  unlockAlerts() {
+    this.inbox.primeAudio();
+    this.inbox.requestBrowserPermission();
+  }
+
+  toggleSound() {
+    this.inbox.primeAudio();
+    this.inbox.setSoundEnabled(!this.soundOn);
+    this.inbox.requestBrowserPermission();
+  }
+
+  openOrders() {
+    this.inbox.dismissAlert();
+    this.router.navigate(['/admin/orders']);
+  }
+
+  dismissAlert(event: Event) {
+    event.stopPropagation();
+    this.inbox.dismissAlert();
+  }
+
   toggleSidebar() {
-    this.sidebarOpen = true;
+    if (typeof window !== 'undefined' && window.innerWidth <= 960) {
+      this.sidebarOpen = !this.sidebarOpen;
+      return;
+    }
     this.collapsed = !this.collapsed;
     localStorage.setItem(COLLAPSE_KEY, this.collapsed ? '1' : '0');
   }
@@ -235,6 +316,7 @@ export class AdminLayoutComponent implements OnInit {
       dashboard: 'Vue d\'ensemble',
       orders: 'Commandes',
       products: 'Produits',
+      stock: 'Stock',
       categories: 'Catégories',
       users: 'Clients & Employés',
       settings: 'Paramètres'

@@ -91,7 +91,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
               </mat-form-field>
     
               <mat-form-field appearance="outline" class="full-width">
-                <mat-label>Mot de passe (min. 6 caractères)</mat-label>
+                <mat-label>Mot de passe (min. 10 caractères)</mat-label>
                 <input matInput type="password" formControlName="password">
                 <mat-icon matSuffix>lock</mat-icon>
               </mat-form-field>
@@ -315,7 +315,7 @@ export class RegisterComponent {
       first_name: ['', Validators.required],
       last_name: ['', Validators.required],
       email: ['', [Validators.required, Validators.email]],
-      password: ['', [Validators.required, Validators.minLength(6)]]
+      password: ['', [Validators.required, Validators.minLength(10)]]
     });
   }
 

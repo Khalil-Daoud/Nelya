@@ -1,4 +1,5 @@
 const Setting = require('../models/Setting');
+const loyaltyService = require('./loyaltyService');
 
 const CURRENCIES = {
   EUR: { code: 'EUR', symbol: '€', label: 'Euro' },
@@ -64,6 +65,22 @@ async function setNotifyCustomer(enabled) {
   return enabled;
 }
 
+async function getLoyaltyTiers() {
+  const setting = await Setting.findByPk('loyalty_tiers');
+  if (!setting?.value) return loyaltyService.DEFAULT_TIERS;
+  try {
+    return loyaltyService.normalizeTiers(JSON.parse(setting.value));
+  } catch {
+    return loyaltyService.DEFAULT_TIERS;
+  }
+}
+
+async function setLoyaltyTiers(raw) {
+  const tiers = loyaltyService.normalizeTiers(raw);
+  await Setting.upsert({ key: 'loyalty_tiers', value: JSON.stringify(tiers) });
+  return tiers;
+}
+
 // Écrire spontanément au numéro d'un client exige un fournisseur officiel.
 // Les identifiants restent dans les variables d'environnement, jamais en base.
 function isCustomerProviderConfigured() {
@@ -76,11 +93,12 @@ function isCustomerProviderConfigured() {
 
 // Réponse publique : aucun secret, uniquement ce dont la boutique a besoin côté navigateur.
 async function getPublicSettings() {
-  const [currency, guestCheckout, whatsappNumber, notifyCustomer] = await Promise.all([
+  const [currency, guestCheckout, whatsappNumber, notifyCustomer, loyaltyTiers] = await Promise.all([
     getCurrency(),
     getGuestCheckout(),
     getWhatsAppNumber(),
-    getNotifyCustomer()
+    getNotifyCustomer(),
+    getLoyaltyTiers()
   ]);
 
   const providerReady = isCustomerProviderConfigured();
@@ -88,6 +106,7 @@ async function getPublicSettings() {
   return {
     currency,
     guestCheckout,
+    loyalty: { tiers: loyaltyTiers },
     whatsapp: {
       number: whatsappNumber,
       notifyCustomer,
@@ -107,6 +126,8 @@ module.exports = {
   setWhatsAppNumber,
   getNotifyCustomer,
   setNotifyCustomer,
+  getLoyaltyTiers,
+  setLoyaltyTiers,
   isCustomerProviderConfigured,
   normalizeWhatsAppNumber,
   getPublicSettings,

@@ -5,6 +5,15 @@ const { auth, optionalAuth, authorize } = require('../middlewares/auth');
 const { Order, OrderItem, Product, User, sequelize } = require('../models');
 const whatsappService = require('../services/whatsappService');
 const settingsService = require('../services/settingsService');
+const loyaltyService = require('../services/loyaltyService');
+
+// Le client associé à une commande était inclus en entier, donc avec le hash bcrypt
+// de son mot de passe. On ne remonte que les champs affichés par l'interface.
+const ORDER_USER_ATTRIBUTES = ['id', 'first_name', 'last_name', 'email', 'loyalty_points'];
+const orderIncludes = () => [
+  { model: User, as: 'User', attributes: ORDER_USER_ATTRIBUTES },
+  { model: OrderItem, as: 'items', include: [{ model: Product }] }
+];
 
 // Les commandes invité sont anonymes et décrémentent le stock : on plafonne par IP.
 const guestOrderLimiter = rateLimit({
@@ -43,12 +52,27 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
       const orderItemsData = [];
       let total = 0;
 
+      // Même identifiant deux fois dans le panier : on agrège avant le verrou,
+      // sinon le second findByPk attendrait le verrou que la même transaction tient déjà.
+      const quantities = new Map();
       for (const item of items) {
         const quantity = Number(item.quantity);
         if (!Number.isInteger(quantity) || quantity <= 0) {
           throw new Error('Quantité invalide');
         }
-        const product = await Product.findByPk(item.product_id, { transaction: t });
+        const id = String(item.product_id || '');
+        if (!id) throw new Error('Produit introuvable');
+        quantities.set(id, (quantities.get(id) || 0) + quantity);
+      }
+
+      // Ordre stable des verrous : deux commandes simultanées ne se croisent pas en deadlock.
+      const productIds = [...quantities.keys()].sort();
+      for (const productId of productIds) {
+        const quantity = quantities.get(productId);
+        const product = await Product.findByPk(productId, {
+          transaction: t,
+          lock: t.LOCK.UPDATE
+        });
         if (!product) {
           throw new Error('Produit introuvable');
         }
@@ -65,6 +89,12 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
         await product.update({ stock: product.stock - quantity }, { transaction: t });
       }
 
+      let pointsAwarded = 0;
+      if (req.user && req.user.role === 'client') {
+        const tiers = await settingsService.getLoyaltyTiers();
+        pointsAwarded = loyaltyService.pointsForItems(orderItemsData, tiers);
+      }
+
       const order = await Order.create({
         user_id: req.user ? req.user.id : null,
         guest_name: guest ? guest.name : null,
@@ -73,7 +103,8 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
         shipping_address,
         phone,
         notes,
-        status: 'pending'
+        status: 'pending',
+        points_awarded: pointsAwarded
       }, { transaction: t });
 
       await OrderItem.bulkCreate(
@@ -81,16 +112,18 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
         { transaction: t }
       );
 
+      if (pointsAwarded > 0) {
+        await User.increment(
+          { loyalty_points: pointsAwarded },
+          { where: { id: req.user.id }, transaction: t }
+        );
+      }
+
       return order;
     });
 
     // Fetch the full order with relations for the notification
-    const fullOrder = await Order.findByPk(newOrder.id, {
-      include: [
-        { model: User, as: 'User' },
-        { model: OrderItem, as: 'items', include: [{ model: Product }] }
-      ]
-    });
+    const fullOrder = await Order.findByPk(newOrder.id, { include: orderIncludes() });
 
     // Notifications WhatsApp (non bloquantes : une commande reste valide si l'envoi échoue)
     whatsappService.sendOrderNotification(fullOrder).catch(err => console.error('[WhatsApp] send error', err));
@@ -103,18 +136,51 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
 });
 
 // Update order status – admins & sellers only
+const ALLOWED_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+
 router.put('/:id', auth, authorize('admin', 'seller'), async (req, res) => {
   try {
-    const order = await Order.findByPk(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Order not found' });
-
-    const allowedStatuses = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+    const allowedStatuses = ALLOWED_STATUSES;
     if (req.body.status && !allowedStatuses.includes(req.body.status)) {
       return res.status(400).json({ message: 'Statut invalide' });
     }
 
-    await order.update({ status: req.body.status });
-    res.json(order);
+    const updated = await sequelize.transaction(async (t) => {
+      const order = await Order.findByPk(req.params.id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!order) return null;
+
+      const nextStatus = req.body.status;
+      // Une annulation remet le stock ; on ne le fait qu'une fois.
+      if (nextStatus === 'cancelled' && order.status !== 'cancelled') {
+        const lines = await OrderItem.findAll({ where: { order_id: order.id }, transaction: t });
+        const productIds = [...new Set(lines.map((line) => line.product_id))].sort();
+        for (const productId of productIds) {
+          const product = await Product.findByPk(productId, { transaction: t, lock: t.LOCK.UPDATE });
+          if (!product) continue;
+          const qty = lines
+            .filter((line) => line.product_id === productId)
+            .reduce((sum, line) => sum + Number(line.quantity), 0);
+          await product.update({ stock: product.stock + qty }, { transaction: t });
+        }
+
+        const awarded = Number(order.points_awarded) || 0;
+        if (awarded > 0 && order.user_id) {
+          const customer = await User.findByPk(order.user_id, { transaction: t, lock: t.LOCK.UPDATE });
+          if (customer) {
+            await customer.update({
+              loyalty_points: Math.max(0, Number(customer.loyalty_points || 0) - awarded)
+            }, { transaction: t });
+          }
+          await order.update({ points_awarded: 0 }, { transaction: t });
+        }
+      }
+
+      await order.update({ status: nextStatus }, { transaction: t });
+      return order;
+    });
+
+    if (!updated) return res.status(404).json({ message: 'Order not found' });
+    res.json(updated);
   } catch (err) {
     return res.status(400).json({ message: err.message || 'Erreur lors de la mise à jour' });
   }
@@ -127,14 +193,68 @@ router.get('/', auth, async (req, res, next) => {
     if (req.user.role === 'client') {
       where.user_id = req.user.id;
     }
-    const orders = await Order.findAll({
+    if (req.query.status && ALLOWED_STATUSES.includes(String(req.query.status))) {
+      where.status = req.query.status;
+    }
+
+    const paginated = req.query.page !== undefined || req.query.limit !== undefined;
+    const listOptions = {
       where,
-      include: [
-        { model: User, as: 'User' },
-        { model: OrderItem, as: 'items', include: [{ model: Product }] }
-      ]
+      include: orderIncludes(),
+      order: [['createdAt', 'DESC']]
+    };
+
+    if (!paginated) {
+      const orders = await Order.findAll(listOptions);
+      return res.json(orders);
+    }
+
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 24));
+    const { rows, count } = await Order.findAndCountAll({
+      ...listOptions,
+      limit,
+      offset: (page - 1) * limit,
+      distinct: true
     });
-    res.json(orders);
+    return res.json({
+      data: rows,
+      total: count,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(count / limit))
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Dernière commande + nombre en attente : pour le badge et le son dans l'admin.
+router.get('/inbox', auth, authorize('admin', 'seller'), async (req, res, next) => {
+  try {
+    const [latest, pending] = await Promise.all([
+      Order.findOne({
+        attributes: ['id', 'createdAt', 'total_amount', 'guest_name'],
+        include: [{ model: User, as: 'User', attributes: ['first_name', 'last_name'] }],
+        order: [['createdAt', 'DESC']]
+      }),
+      Order.count({ where: { status: 'pending' } })
+    ]);
+
+    let customer = null;
+    if (latest) {
+      customer = latest.User
+        ? `${latest.User.first_name} ${latest.User.last_name}`.trim()
+        : (latest.guest_name || 'Invité');
+    }
+
+    res.json({
+      latestId: latest?.id || null,
+      createdAt: latest?.createdAt || null,
+      totalAmount: latest?.total_amount || null,
+      customer,
+      pending
+    });
   } catch (err) {
     next(err);
   }
@@ -143,12 +263,7 @@ router.get('/', auth, async (req, res, next) => {
 // Get a single order – same access rules as list
 router.get('/:id', auth, async (req, res, next) => {
   try {
-    const order = await Order.findByPk(req.params.id, {
-      include: [
-        { model: User, as: 'User' },
-        { model: OrderItem, as: 'items', include: [{ model: Product }] }
-      ]
-    });
+    const order = await Order.findByPk(req.params.id, { include: orderIncludes() });
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (req.user.role === 'client' && order.user_id !== req.user.id) {
       return res.status(403).json({ message: 'Forbidden' });

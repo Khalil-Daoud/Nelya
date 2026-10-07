@@ -2,21 +2,34 @@ const express = require('express');
 const BaseService = require('./BaseService');
 const models = require('../models');
 const { auth, authorize } = require('../middlewares/auth');
+const { buildListQuery } = require('./listQuery');
 
-// [SEC-FIX] Configuration par modèle : contrôle fin de ce qui est lisible/écrivable
+// [SEC-FIX] Configuration par modèle : contrôle fin de ce qui est lisible/écrivable.
+// searchFields / filterFields / rangeFields / sortFields font aussi office de liste
+// blanche pour la pagination : aucun autre nom de colonne n'est accepté de l'URL.
 const MODEL_CONFIG = {
   Product: {
     publicRead: true,
     writeFields: ['reference', 'name', 'contenance', 'description', 'price', 'stock', 'image_url', 'category'],
+    searchFields: ['name', 'description', 'reference', 'category'],
+    filterFields: ['category'],
+    rangeFields: ['price', 'stock'],
+    sortFields: { name: 'name', price: 'price', stock: 'stock', newest: 'createdAt' },
   },
   Category: {
     publicRead: true,
     writeFields: ['name', 'description'],
+    searchFields: ['name'],
+    sortFields: { name: 'name', newest: 'createdAt' },
   },
   User: {
     publicRead: false,
+    readRoles: ['admin'],
     writeFields: ['first_name', 'last_name', 'email', 'password', 'role'],
     readExclude: ['password'],
+    searchFields: ['first_name', 'last_name', 'email'],
+    filterFields: ['role'],
+    sortFields: { email: 'email', newest: 'createdAt' },
   },
 };
 
@@ -54,7 +67,8 @@ function createDynamicRouter(modelName) {
   const checkReadAuth = (req, res, next) => {
     if (config.publicRead) return next();
     return auth(req, res, () => {
-      authorize('admin', 'seller')(req, res, next);
+      const roles = config.readRoles || ['admin', 'seller'];
+      authorize(...roles)(req, res, next);
     });
   };
 
@@ -76,12 +90,28 @@ function createDynamicRouter(modelName) {
     return data;
   };
 
-  router.get('/', checkReadAuth, async (req, res) => {
+  // Liste paginée dès que ?page ou ?limit est fourni : la réponse devient alors une
+  // enveloppe { data, total, ... }. Sans ces paramètres on renvoie un tableau simple,
+  // par compatibilité avec les écrans qui chargent une collection courte (catégories).
+  router.get('/', checkReadAuth, async (req, res, next) => {
     try {
-      const data = await service.getAll(getReadOptions());
-      res.json(sanitize(modelName, data));
+      const { where, order, limit, offset, page, paginated } = buildListQuery(req.query, config);
+
+      if (!paginated) {
+        const data = await service.getAll({ ...getReadOptions(), where, order });
+        return res.json(sanitize(modelName, data));
+      }
+
+      const { rows, count } = await service.getPage({ ...getReadOptions(), where, order, limit, offset });
+      return res.json({
+        data: sanitize(modelName, rows),
+        total: count,
+        page,
+        limit,
+        pages: Math.max(1, Math.ceil(count / limit))
+      });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      next(error);
     }
   });
 

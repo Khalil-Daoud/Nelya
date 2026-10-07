@@ -18,9 +18,16 @@ export interface WhatsAppSettings {
   autoSend: boolean;
 }
 
+export interface LoyaltyTier {
+  min: number;
+  max: number;
+  points: number;
+}
+
 export interface StoreSettings {
   currency: Currency;
   guestCheckout: boolean;
+  loyalty?: { tiers: LoyaltyTier[] };
   whatsapp: WhatsAppSettings;
 }
 
@@ -37,7 +44,14 @@ export interface SettingsPayload {
   guestCheckout?: boolean;
   whatsappNumber?: string;
   notifyCustomer?: boolean;
+  loyaltyTiers?: LoyaltyTier[];
 }
+
+export const DEFAULT_LOYALTY_TIERS: LoyaltyTier[] = [
+  { min: 0, max: 20, points: 10 },
+  { min: 20, max: 50, points: 20 },
+  { min: 50, max: 1000, points: 50 }
+];
 
 @Injectable({
   providedIn: 'root'
@@ -51,6 +65,9 @@ export class SettingsService {
 
   private whatsappSubject = new BehaviorSubject<WhatsAppSettings>(DEFAULT_WHATSAPP);
   public whatsapp$ = this.whatsappSubject.asObservable();
+
+  private loyaltyTiersSubject = new BehaviorSubject<LoyaltyTier[]>(DEFAULT_LOYALTY_TIERS);
+  public loyaltyTiers$ = this.loyaltyTiersSubject.asObservable();
 
   constructor(private api: ApiService) {}
 
@@ -72,6 +89,25 @@ export class SettingsService {
     return this.whatsappSubject.value;
   }
 
+  get loyaltyTiers(): LoyaltyTier[] {
+    return this.loyaltyTiersSubject.value;
+  }
+
+  pointsForPrice(price: number): number {
+    const value = Number(price);
+    if (!Number.isFinite(value) || value < 0) return 0;
+    const match = this.loyaltyTiers.find(tier => value >= tier.min && value <= tier.max);
+    return match ? match.points : 0;
+  }
+
+  pointsForItems(items: Array<{ price?: number; unit_price?: number; quantity?: number }>): number {
+    return (items || []).reduce((sum, item) => {
+      const qty = Number(item.quantity) || 0;
+      const price = item.unit_price ?? item.price ?? 0;
+      return sum + this.pointsForPrice(price) * qty;
+    }, 0);
+  }
+
   setCurrency(code: string): Promise<Currency> {
     return this.save({ currency: code }).then(() => this.currency);
   }
@@ -90,5 +126,7 @@ export class SettingsService {
     }
     this.guestCheckoutSubject.next(Boolean(settings?.guestCheckout));
     this.whatsappSubject.next({ ...DEFAULT_WHATSAPP, ...(settings?.whatsapp || {}) });
+    const tiers = settings?.loyalty?.tiers;
+    this.loyaltyTiersSubject.next(Array.isArray(tiers) && tiers.length ? tiers : DEFAULT_LOYALTY_TIERS);
   }
 }

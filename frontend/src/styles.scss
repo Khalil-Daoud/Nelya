@@ -114,6 +114,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-size: 16px;
+  overflow-x: hidden;
 }
 
 h1, h2, h3, h4, h5, h6, .luxury-title {
@@ -566,5 +567,9 @@ html { scrollbar-width: thin; scrollbar-color: #d8d8d8 var(--luxe-offwhite); }
   .section { padding: var(--space-7) 0; }
 }
 @media (max-width: 640px) {
+  .container { padding: 0 16px; }
   .grid-3, .grid-4 { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .container { padding: 0 12px; }
 }

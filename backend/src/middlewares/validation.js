@@ -7,8 +7,8 @@ const validateRegister = (req, res, next) => {
   if (!emailRegex.test(email)) {
     return res.status(400).json({ message: 'Adresse email invalide.' });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères.' });
+  if (password.length < 10) {
+    return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 10 caractères.' });
   }
   next();
 };

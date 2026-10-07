@@ -11,6 +11,15 @@ class BaseService {
     }
   }
 
+  // findAndCountAll renvoie la page et le total en une seule aller-retour.
+  async getPage(query = {}) {
+    try {
+      return await this.model.findAndCountAll(query);
+    } catch (error) {
+      throw error;
+    }
+  }
+
   async getById(id, options = {}) {
     try {
       return await this.model.findByPk(id, options);

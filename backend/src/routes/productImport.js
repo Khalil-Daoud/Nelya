@@ -1,6 +1,9 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+const sharp = require('sharp');
+const JSZip = require('jszip');
 const { Op } = require('sequelize');
 const { auth, authorize } = require('../middlewares/auth');
 const { Product, Category } = require('../models');
@@ -9,14 +12,17 @@ const { parseCsv, normalizeHeader, parsePrice } = require('../utils/csv');
 const router = express.Router();
 
 const MAX_ROWS = 2000;
+const MAX_ZIP_IMAGES = 80;
+const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+const uploadDir = path.join(__dirname, '..', 'img');
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 },
+  limits: { fileSize: 25 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (!['.csv', '.txt'].includes(ext)) {
-      return cb(new Error('Format non supporté : exportez votre fichier Excel en CSV (.csv)'));
+    if (!['.csv', '.txt', '.zip'].includes(ext)) {
+      return cb(new Error('Envoyez un CSV, ou un ZIP contenant le CSV et les photos.'));
     }
     cb(null, true);
   }
@@ -51,12 +57,62 @@ function mapHeaders(headerRow) {
 
 // Une cellule "image" peut contenir une URL complète ou juste un nom de fichier
 // déjà présent dans /img (uploadé via le formulaire produit).
-function normalizeImageUrl(value) {
+function normalizeImageUrl(value, packedImages) {
   const text = String(value || '').trim();
   if (!text) return '';
+  const base = path.basename(text).toLowerCase();
+  if (packedImages && packedImages.has(base)) return packedImages.get(base);
   if (/^https?:\/\//i.test(text)) return text;
   if (text.startsWith('/')) return text;
   return `/img/${text.replace(/^\.?\/+/, '')}`;
+}
+
+async function savePackedImage(buffer) {
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  const converted = await sharp(buffer, { failOn: 'error' })
+    .rotate()
+    .resize({ width: 1400, height: 1400, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 80 })
+    .toBuffer();
+  const filename = `product_${Date.now()}_${Math.round(Math.random() * 1e9)}_${process.hrtime.bigint()}.webp`;
+  await fs.promises.writeFile(path.join(uploadDir, filename), converted);
+  return `/img/${filename}`;
+}
+
+async function unpackImport(file) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ext !== '.zip') {
+    return { csvBuffer: file.buffer, packedImages: new Map() };
+  }
+
+  const zip = await JSZip.loadAsync(file.buffer);
+  const names = Object.keys(zip.files);
+  const csvName = names.find((n) => /\.csv$/i.test(n) && !zip.files[n].dir);
+  if (!csvName) {
+    throw Object.assign(new Error('Le ZIP doit contenir un fichier .csv.'), { status: 400 });
+  }
+
+  const csvBuffer = await zip.files[csvName].async('nodebuffer');
+  const packedImages = new Map();
+  let saved = 0;
+
+  for (const name of names) {
+    const entry = zip.files[name];
+    if (entry.dir) continue;
+    const imageExt = path.extname(name).toLowerCase();
+    if (!IMAGE_EXTS.has(imageExt)) continue;
+    if (saved >= MAX_ZIP_IMAGES) break;
+    const raw = await entry.async('nodebuffer');
+    try {
+      const url = await savePackedImage(raw);
+      packedImages.set(path.basename(name).toLowerCase(), url);
+      saved += 1;
+    } catch {
+      // Fichier nommé comme une image mais illisible : on ignore.
+    }
+  }
+
+  return { csvBuffer, packedImages };
 }
 
 async function resolveCategory(rawName, cache, createdCategories) {
@@ -79,7 +135,7 @@ router.post('/import', auth, authorize('admin', 'seller'), (req, res) => {
   upload.single('file')(req, res, async (uploadError) => {
     if (uploadError) {
       const message = uploadError.code === 'LIMIT_FILE_SIZE'
-        ? 'Fichier trop volumineux (2 Mo max)'
+        ? 'Fichier trop volumineux (25 Mo max, ZIP inclus)'
         : uploadError.message;
       return res.status(400).json({ message });
     }
@@ -88,7 +144,8 @@ router.post('/import', auth, authorize('admin', 'seller'), (req, res) => {
     }
 
     try {
-      const { rows } = parseCsv(req.file.buffer.toString('utf8'));
+      const { csvBuffer, packedImages } = await unpackImport(req.file);
+      const { rows } = parseCsv(csvBuffer.toString('utf8'));
       if (rows.length < 2) {
         return res.status(400).json({ message: 'Le fichier est vide ou ne contient que les en-têtes' });
       }
@@ -145,7 +202,7 @@ router.post('/import', auth, authorize('admin', 'seller'), (req, res) => {
             contenance: cell(row, 'contenance') || null,
             description: cell(row, 'description') || null,
             price,
-            image_url: normalizeImageUrl(cell(row, 'image')),
+            image_url: normalizeImageUrl(cell(row, 'image'), packedImages),
             category: await resolveCategory(cell(row, 'category'), categoryCache, createdCategories)
           };
 
@@ -174,6 +231,7 @@ router.post('/import', auth, authorize('admin', 'seller'), (req, res) => {
         created,
         updated,
         skipped: errors.length,
+        imagesImported: packedImages.size,
         categoriesCreated: createdCategories,
         errors: errors.slice(0, 50)
       });

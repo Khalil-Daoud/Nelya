@@ -7,6 +7,7 @@ import { ImageUrlPipe } from '../../pipes/image-url.pipe';
 import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
 import { CartService } from '../../services/cart.service';
 import { WishlistService } from '../../services/wishlist.service';
+import { SettingsService } from '../../services/settings.service';
 
 @Component({
   selector: 'app-product-card',
@@ -31,6 +32,7 @@ import { WishlistService } from '../../services/wishlist.service';
         <h3 class="pcard-name">{{ product.name }}</h3>
         <div class="pcard-footer">
           <span class="pcard-price">{{ product.price | formatCurrency }}</span>
+          <span class="pcard-pts" *ngIf="pointsForProduct > 0">+{{ pointsForProduct }} pts</span>
           <button class="pcard-cart" (click)="$event.stopPropagation(); addToCart()"
             [attr.aria-label]="'Ajouter ' + product.name + ' au panier'">
             <mat-icon>add_shopping_cart</mat-icon>
@@ -89,6 +91,7 @@ import { WishlistService } from '../../services/wishlist.service';
     .pcard-name { font-size: 1.15rem; margin: 0; font-weight: 500; font-family: var(--font-heading); color: var(--luxe-black); line-height: 1.3; }
     .pcard-footer { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 6px; }
     .pcard-price { font-size: 1.05rem; color: var(--luxe-charcoal); font-weight: 600; }
+    .pcard-pts { margin-right: auto; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.4px; color: var(--luxe-gold); }
     .pcard-cart {
       width: 42px; height: 42px; border-radius: 50%;
       border: 1px solid var(--luxe-border); background: var(--luxe-white);
@@ -110,8 +113,13 @@ export class ProductCardComponent {
   constructor(
     private cartService: CartService,
     private wishlistService: WishlistService,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private settings: SettingsService
   ) {}
+
+  get pointsForProduct(): number {
+    return this.settings.pointsForPrice(this.product?.price);
+  }
 
   ngOnInit() {
     this.wishlisted = this.wishlistService.isWishlisted(this.product.id);

@@ -9,10 +9,13 @@ export class ImageUrlPipe implements PipeTransform {
   transform(value: string): string {
     if (!value) return '';
     if (value.startsWith('http://') || value.startsWith('https://')) return value;
-    
-    // Si on est en développement sur localhost:4200, on préfixe avec le serveur backend local
-    // En production, on préfixe avec l'URL publique du backend (Railway)
-    const base = window.location.hostname === 'localhost' ? 'http://localhost:3000' : API_BASE_URL;
-    return `${base}${value}`;
+
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return `http://localhost:3000${value}`;
+    }
+    // Même origine derrière nginx, ou hôte API explicite.
+    const origin = (API_BASE_URL || '').replace(/\/$/, '');
+    return `${origin}${value}`;
   }
 }

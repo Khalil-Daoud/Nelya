@@ -13,6 +13,7 @@ import { ImageUrlPipe } from '../../pipes/image-url.pipe';
 import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
 import { BreadcrumbComponent } from '../../components/breadcrumb/breadcrumb.component';
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
+import { SettingsService } from '../../services/settings.service';
 
 const REVIEWS = [
   { name: 'Ines H.', role: 'Cliente vérifiée', text: 'Texture incroyable et parfum raffiné. Ma peau est visiblement plus lumineuse après quelques jours d’utilisation. Je recommande vivement !', date: 'Il y a 2 semaines' },
@@ -110,6 +111,11 @@ export class ReviewDialogComponent {
               <span>5.0 &middot; <button class="rating-link" (click)="scrollToReviews()">avis clients</button></span>
             </div>
             <p class="info-price">{{ product.price | formatCurrency }}</p>
+            <p class="info-points" *ngIf="pointsForProduct > 0">
+              <mat-icon>stars</mat-icon>
+              +{{ pointsForProduct }} pts fidélité par unité
+              <span *ngIf="quantity > 1"> ({{ pointsForProduct * quantity }} pts pour {{ quantity }})</span>
+            </p>
 
             <div class="info-buy">
               <div class="qty-stepper">
@@ -291,9 +297,14 @@ export class ReviewDialogComponent {
     .info-rating span { font-size: 0.8rem; color: var(--luxe-text-muted); margin-left: 6px; }
     .rating-link { background: none; border: none; padding: 0; cursor: pointer; color: var(--luxe-text-muted); text-decoration: underline; font-size: 0.8rem; }
     .rating-link:hover { color: var(--luxe-gold); }
-    .info-price { font-size: 2rem; color: var(--luxe-black); font-weight: 500; margin: 0 0 30px; }
+    .info-price { font-size: 2rem; color: var(--luxe-black); font-weight: 500; margin: 0 0 10px; }
+    .info-points {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      color: var(--luxe-gold); font-size: 0.88rem; font-weight: 600; margin: 0 0 24px;
+    }
+    .info-points mat-icon { font-size: 18px; width: 18px; height: 18px; }
 
-    .info-buy { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+    .info-buy { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
     .qty-stepper { display: flex; align-items: center; border: 1px solid var(--luxe-border); border-radius: var(--radius-pill); overflow: hidden; }
     .qty-stepper button {
       width: 46px; height: 54px; border: none; background: none; cursor: pointer;
@@ -421,8 +432,13 @@ export class ProductDetailComponent implements OnInit {
     private cartService: CartService,
     private wishlistService: WishlistService,
     private snackBar: MatSnackBar,
-    private dialog: MatDialog
+    private dialog: MatDialog,
+    private settings: SettingsService
   ) {}
+
+  get pointsForProduct(): number {
+    return this.settings.pointsForPrice(this.product?.price);
+  }
 
   get breadcrumbs() {
     const crumbs: any[] = [{ label: 'Boutique', url: '/collection' }];
@@ -458,10 +474,15 @@ export class ProductDetailComponent implements OnInit {
   }
 
   loadRelated() {
-    this.crud.getAll<any>('products').subscribe(all => {
-      this.related = all
-        .filter(p => p.category === this.product.category && String(p.id) !== String(this.product.id))
-        .slice(0, 4);
+    if (!this.product?.category) return;
+    // Cinq pour pouvoir en retirer le produit affiché et en garder quatre.
+    this.crud.getPage<any>('products', { category: this.product.category, limit: 5 }).subscribe({
+      next: page => {
+        this.related = page.data
+          .filter(p => String(p.id) !== String(this.product.id))
+          .slice(0, 4);
+      },
+      error: () => { this.related = []; }
     });
   }
 

@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { CrudService } from '../services/crud.service';
+import { CategoryCount } from '../services/catalog.types';
 import { ProductCardComponent } from '../components/product-card/product-card.component';
 import { ImageUrlPipe } from '../pipes/image-url.pipe';
 
@@ -246,6 +247,12 @@ import { ImageUrlPipe } from '../pipes/image-url.pipe';
       .stat:nth-child(2n) { border-right: none; }
       .luxe-subscribe { flex-direction: column; border-radius: var(--radius-lg); }
       .luxe-subscribe input { padding: 18px 22px; }
+      .luxe-prod-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+    }
+    @media (max-width: 480px) {
+      .luxe-usps-grid { grid-template-columns: 1fr; }
+      .stat { max-width: 100%; border-right: none; }
+      .luxe-prod-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
     }
   `]
 })
@@ -256,19 +263,18 @@ export class HomeComponent implements OnInit {
   constructor(private crud: CrudService, private snackBar: MatSnackBar) {}
 
   ngOnInit() {
-    this.crud.getAll<any>('products').subscribe({
-      next: data => {
-        this.products = data.slice(0, 8);
-        const seen: any = {};
-        const cats: any[] = [];
-        for (const p of data) {
-          if (p.category && p.category !== 'Promotions' && !seen[p.category]) {
-            seen[p.category] = true;
-            cats.push({ name: p.category, image: p.image_url });
-          }
-          if (cats.length === 4) break;
-        }
-        this.categories = cats;
+    // Huit produits, pas le catalogue : la page d'accueil n'en affiche pas plus.
+    this.crud.getPage<any>('products', { limit: 8, sort: 'newest:desc' }).subscribe({
+      next: page => { this.products = page.data; },
+      error: () => {}
+    });
+
+    // Les vignettes de catégories viennent des agrégats, calculés côté serveur.
+    this.crud.getAll<CategoryCount>('products/meta').subscribe({
+      next: (meta: any) => {
+        this.categories = (meta.categories || [])
+          .filter((c: CategoryCount) => c.name !== 'Promotions')
+          .slice(0, 4);
       },
       error: () => {}
     });

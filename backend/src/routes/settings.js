@@ -27,6 +27,9 @@ router.put('/', auth, authorize('admin'), async (req, res) => {
     if (req.body.notifyCustomer !== undefined) {
       await settingsService.setNotifyCustomer(req.body.notifyCustomer === true || req.body.notifyCustomer === 'true');
     }
+    if (req.body.loyaltyTiers !== undefined) {
+      await settingsService.setLoyaltyTiers(req.body.loyaltyTiers);
+    }
     res.json(await settingsService.getPublicSettings());
   } catch (error) {
     res.status(400).json({ message: error.message });

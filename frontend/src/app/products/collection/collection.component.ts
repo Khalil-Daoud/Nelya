@@ -1,12 +1,22 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Subject, debounceTime, switchMap, takeUntil, tap } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatSliderModule } from '@angular/material/slider';
 import { FormsModule } from '@angular/forms';
 import { CrudService } from '../../services/crud.service';
+import { CategoryCount } from '../../services/catalog.types';
+
+// Correspondance entre les valeurs du menu de tri et le paramètre attendu par l'API.
+const SORT_PARAMS: Record<string, string> = {
+  'featured': '',
+  'price-asc': 'price:asc',
+  'price-desc': 'price:desc',
+  'name-asc': 'name:asc'
+};
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
 import { BreadcrumbComponent, Crumb } from '../../components/breadcrumb/breadcrumb.component';
 import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
@@ -40,14 +50,16 @@ import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
             <h4 class="filter-title">Catégories</h4>
             <mat-chip-listbox (change)="onCategoryChange($event.value)" [value]="selectedCategory">
               <mat-chip-option value="all">Tout voir</mat-chip-option>
-              <mat-chip-option *ngFor="let cat of categories" [value]="cat">{{cat}}</mat-chip-option>
+              <mat-chip-option *ngFor="let cat of categories" [value]="cat.name">
+                {{cat.name}} ({{cat.count}})
+              </mat-chip-option>
             </mat-chip-listbox>
           </div>
 
           <div class="filter-group">
             <h4 class="filter-title">Prix maximum &mdash; {{maxPriceDisplay | formatCurrency:0}}</h4>
             <mat-slider [min]="priceMin" [max]="priceMax" step="5" discrete [discrete]="true">
-              <input matSliderThumb [(ngModel)]="maxPriceDisplay" (ngModelChange)="applyFilters()">
+              <input matSliderThumb [(ngModel)]="maxPriceDisplay" (ngModelChange)="onPriceChange()">
             </mat-slider>
             <div class="filter-range">
               <span>{{ priceMin | formatCurrency:0 }}</span>
@@ -67,7 +79,7 @@ import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
         <main class="results">
           <div class="results-toolbar">
             <p class="results-count" *ngIf="!loading">
-              <strong>{{ filteredProducts.length }}</strong> produit{{ filteredProducts.length > 1 ? 's' : '' }}
+              <strong>{{ total }}</strong> produit{{ total > 1 ? 's' : '' }}
             </p>
             <div class="toolbar-actions">
               <button class="mobile-filters-btn" (click)="filtersOpen = true">
@@ -75,7 +87,7 @@ import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
               </button>
               <div class="sort-wrap">
                 <label for="sortSelect">Trier</label>
-                <select id="sortSelect" [(ngModel)]="sortBy" (ngModelChange)="applyFilters()" aria-label="Trier les produits">
+                <select id="sortSelect" [(ngModel)]="sortBy" (ngModelChange)="reload()" aria-label="Trier les produits">
                   <option value="featured">Recommandés</option>
                   <option value="price-asc">Prix croissant</option>
                   <option value="price-desc">Prix décroissant</option>
@@ -96,21 +108,31 @@ import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
           </div>
 
           <!-- Empty -->
-          <div class="results-empty" *ngIf="!loading && filteredProducts.length === 0">
+          <div class="results-empty" *ngIf="!loading && products.length === 0 && !loadError">
             <mat-icon>search_off</mat-icon>
             <h3>Aucun produit trouvé</h3>
             <p>Essayez d'élargir vos critères de recherche ou de réinitialiser les filtres.</p>
             <button mat-flat-button color="primary" (click)="resetFilters()">RÉINITIALISER LES FILTRES</button>
           </div>
 
-          <!-- Grid -->
-          <div class="products-grid" *ngIf="!loading && filteredProducts.length">
-            <app-product-card *ngFor="let product of visibleProducts" [product]="product"></app-product-card>
+          <!-- Erreur réseau : distinguée du « aucun résultat », qui ne veut pas dire la même chose -->
+          <div class="results-empty" *ngIf="!loading && loadError">
+            <mat-icon>cloud_off</mat-icon>
+            <h3>Chargement impossible</h3>
+            <p>La boutique n'a pas pu être contactée. Vérifiez votre connexion.</p>
+            <button mat-flat-button color="primary" (click)="reload()">RÉESSAYER</button>
           </div>
 
-          <div class="see-more" *ngIf="!loading && filteredProducts.length > visibleCount">
-            <p>{{ visibleCount }} sur {{ filteredProducts.length }} produits</p>
-            <button mat-stroked-button (click)="showMore()">VOIR PLUS DE PRODUITS</button>
+          <!-- Grid -->
+          <div class="products-grid" *ngIf="!loading && products.length">
+            <app-product-card *ngFor="let product of products; trackBy: trackById" [product]="product"></app-product-card>
+          </div>
+
+          <div class="see-more" *ngIf="!loading && products.length < total">
+            <p>{{ products.length }} sur {{ total }} produits</p>
+            <button mat-stroked-button (click)="showMore()" [disabled]="loadingMore">
+              {{ loadingMore ? 'CHARGEMENT…' : 'VOIR PLUS DE PRODUITS' }}
+            </button>
           </div>
         </main>
       </div>
@@ -202,14 +224,18 @@ import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
       .filter-head h3 { font-family: var(--font-heading); margin: 0; color: var(--luxe-black); letter-spacing: 2px; }
       .filter-close { background: none; border: none; cursor: pointer; color: var(--luxe-charcoal); display: flex; }
       .filter-scrim { display: block; position: fixed; inset: 0; background: rgba(10,10,10,0.45); z-index: 1050; }
+      .products-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+    }
+    @media (max-width: 480px) {
+      .products-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
     }
   `]
 })
-export class CollectionComponent implements OnInit {
+export class CollectionComponent implements OnInit, OnDestroy {
+  /** Produits chargés jusqu'ici, pas le catalogue entier. */
   products: any[] = [];
-  filteredProducts: any[] = [];
-  visibleProducts: any[] = [];
-  categories: string[] = [];
+  categories: CategoryCount[] = [];
+  total = 0;
   selectedCategory: string = 'all';
   searchTerm: string = '';
   sortBy: string = 'featured';
@@ -217,8 +243,19 @@ export class CollectionComponent implements OnInit {
   priceMax: number = 200;
   maxPriceDisplay: number = 200;
   loading = true;
+  loadingMore = false;
+  loadError = false;
   filtersOpen = false;
-  private pageSize = 9;
+
+  private pageSize = 12;
+  private currentPage = 1;
+  private pageCount = 1;
+
+  // Le curseur de prix émet à chaque pixel de déplacement : sans ce tampon, une seule
+  // glissade déclencherait des dizaines de requêtes.
+  private priceChange$ = new Subject<void>();
+  private reload$ = new Subject<void>();
+  private destroy$ = new Subject<void>();
 
   constructor(
     private route: ActivatedRoute,
@@ -242,10 +279,6 @@ export class CollectionComponent implements OnInit {
     return crumbs;
   }
 
-  get visibleCount(): number {
-    return this.visibleProducts.length;
-  }
-
   get activeFilterCount(): number {
     let n = 0;
     if (this.selectedCategory !== 'all') n++;
@@ -254,64 +287,107 @@ export class CollectionComponent implements OnInit {
     return n;
   }
 
+  trackById(_index: number, product: any) {
+    return product.id;
+  }
+
   ngOnInit() {
-    this.route.queryParams.subscribe(params => {
+    this.loadMeta();
+
+    this.priceChange$
+      .pipe(debounceTime(350), takeUntil(this.destroy$))
+      .subscribe(() => this.reload$.next());
+
+    // switchMap annule la requête précédente : un filtre changé deux fois de suite ne
+    // peut pas voir l'ancienne réponse écraser la nouvelle.
+    this.reload$
+      .pipe(
+        tap(() => { this.loading = true; this.loadError = false; }),
+        switchMap(() => this.crud.getPage<any>('products', this.buildQuery(1))),
+        takeUntil(this.destroy$)
+      )
+      .subscribe({
+        next: page => {
+          this.products = page.data;
+          this.total = page.total;
+          this.currentPage = page.page;
+          this.pageCount = page.pages;
+          this.loading = false;
+        },
+        error: () => {
+          this.products = [];
+          this.total = 0;
+          this.loadError = true;
+          this.loading = false;
+        }
+      });
+
+    this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe(params => {
       if (params['q'] !== undefined) this.searchTerm = params['q'];
       if (params['cat'] !== undefined) this.selectedCategory = params['cat'];
-      if (this.products.length) {
-        this.applyFilters();
-      } else {
-        this.loadProducts();
-      }
+      this.reload();
     });
   }
 
-  loadProducts() {
-    this.loading = true;
-    this.crud.getAll<any>('categories').subscribe({
-      next: categories => { this.categories = categories.map((c: any) => c.name); },
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  /** Bornes du curseur de prix et catégories réellement présentes au catalogue. */
+  private loadMeta() {
+    this.crud.getAll<any>('products/meta').subscribe({
+      next: (meta: any) => {
+        this.categories = meta.categories || [];
+        this.priceMax = Math.max(10, Math.ceil(Number(meta.maxPrice || 0) / 10) * 10);
+        // Ne pas écraser un plafond déjà choisi par la cliente.
+        if (this.maxPriceDisplay >= this.priceMax || this.maxPriceDisplay === 200) {
+          this.maxPriceDisplay = this.priceMax;
+        }
+      },
       error: () => { this.categories = []; }
     });
-    this.crud.getAll<any>('products').subscribe({
-      next: data => {
-        this.products = data;
-        const max = Math.max(...data.map((p: any) => p.price), 0);
-        this.priceMax = Math.ceil(max / 10) * 10;
-        this.maxPriceDisplay = this.priceMax;
-        this.applyFilters();
-        this.loading = false;
-      },
-      error: () => { this.loading = false; }
-    });
+  }
+
+  private buildQuery(page: number) {
+    return {
+      page,
+      limit: this.pageSize,
+      search: this.searchTerm.trim() || undefined,
+      category: this.selectedCategory === 'all' ? undefined : this.selectedCategory,
+      // Au plafond, aucun filtre de prix n'est envoyé : inutile de restreindre
+      // avec une borne égale au prix le plus élevé du catalogue.
+      price_max: this.maxPriceDisplay < this.priceMax ? this.maxPriceDisplay : undefined,
+      sort: SORT_PARAMS[this.sortBy] || undefined
+    };
+  }
+
+  reload() {
+    this.reload$.next();
+  }
+
+  onPriceChange() {
+    this.priceChange$.next();
   }
 
   onCategoryChange(cat: string) {
     this.selectedCategory = cat || 'all';
-    this.applyFilters();
-  }
-
-  applyFilters() {
-    const term = this.searchTerm.trim().toLowerCase();
-    const max = this.maxPriceDisplay;
-    this.filteredProducts = this.products.filter(p => {
-      const catMatch = this.selectedCategory === 'all' || p.category === this.selectedCategory;
-      const priceMatch = p.price <= max;
-      const termMatch = !term || p.name.toLowerCase().includes(term) || (p.description || '').toLowerCase().includes(term);
-      return catMatch && priceMatch && termMatch;
-    });
-
-    switch (this.sortBy) {
-      case 'price-asc': this.filteredProducts.sort((a, b) => a.price - b.price); break;
-      case 'price-desc': this.filteredProducts.sort((a, b) => b.price - a.price); break;
-      case 'name-asc': this.filteredProducts.sort((a, b) => String(a.name).localeCompare(String(b.name))); break;
-      default: break;
-    }
-
-    this.visibleProducts = this.filteredProducts.slice(0, this.pageSize);
+    this.reload();
   }
 
   showMore() {
-    this.visibleProducts = this.filteredProducts.slice(0, this.visibleProducts.length + this.pageSize);
+    if (this.loadingMore || this.currentPage >= this.pageCount) return;
+    this.loadingMore = true;
+    this.crud.getPage<any>('products', this.buildQuery(this.currentPage + 1)).subscribe({
+      next: page => {
+        this.products = [...this.products, ...page.data];
+        this.total = page.total;
+        this.currentPage = page.page;
+        this.pageCount = page.pages;
+        this.loadingMore = false;
+      },
+      error: () => { this.loadingMore = false; }
+    });
   }
 
   resetFilters() {
@@ -319,8 +395,8 @@ export class CollectionComponent implements OnInit {
     this.searchTerm = '';
     this.maxPriceDisplay = this.priceMax;
     this.sortBy = 'featured';
-    this.applyFilters();
     this.router.navigate(['/collection']);
+    this.reload();
   }
 
   goTo(cat: string) {

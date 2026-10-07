@@ -55,7 +55,7 @@ describe('Auth Endpoints', () => {
         });
       
       expect(res.statusCode).toEqual(400);
-      expect(res.body.message).toContain('au moins 6 caractères');
+      expect(res.body.message).toContain('au moins 10 caractères');
     });
   });
 

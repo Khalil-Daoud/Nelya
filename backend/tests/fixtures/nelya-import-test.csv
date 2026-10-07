@@ -1,0 +1,18 @@
+Ref;Categorie;Designation;Contenance;Prix;Image;Stock;Description
+NEL-101;Soins Visage;Sérum Vitamine C Éclat;30 ml;42,900;/img/huile.jpg;24;"Sérum antioxydant pour un teint plus lumineux. Appliquer le matin avant la crème."
+NEL-102;Soins Visage;Crème Hydratante Rose de Damas;50 ml;38,500;/img/huile.jpg;18;Hydratation 24h, texture légère, adaptée aux peaux mixtes.
+NEL-103;Parfums;Eau de Parfum Jasmin Noir;100 ml;129,000;/img/promo.jpg;8;Notes de jasmin, musc blanc et bois de santal.
+NEL-104;Parfums;Brume Corps Fleur d'Oranger;150 ml;29,900;/img/deo.jpg;40;Brume fraîche à porter après la douche.
+NEL-105;Hygiène;Déodorant Minéral Sans Aluminium;50 ml;16,500;/img/deo.jpg;0;Rupture volontaire pour tester le stock à zéro.
+NEL-106;Corps;Huile Sèche Pailletée;100 ml;34,900;/img/huile.jpg;12;Nourrit et illumine les jambes. Séchage rapide.
+NEL-107;Corps;Beurre de Karité Pur;200 ml;22,000;huile.jpg;30;Beurre brut, non raffiné. Idéal coudes, pieds et cuticules.
+NEL-108;Cheveux;Huile Capillaire Figue de Barbarie;50 ml;45,000;/img/huile.jpg;15;Répare les pointes et apporte de la brillance.
+NEL-109;Cheveux;Masque Réparateur Kératine;250 ml;27,500;/img/promo.jpg;22;Pose 10 minutes, 1 à 2 fois par semaine.
+NEL-110;Maquillage;Gloss Nude Satin;8 ml;19,900;/img/promo.jpg;35;Fini satiné, non collant.
+NEL-111;Maquillage;Mascara Volume Intense;10 ml;24,500;/img/deo.jpg;28;Brosse courbée, formule waterproof.
+NEL-112;Promotions;Coffret Rituel Soir (3 produits);—;79,900;/img/promo.jpg;6;"Coffret : crème de nuit + sérum + brume. Offre limitée Fête des Mères."
+NEL-113;Soins Naturels;Huile de Souchet Corps;50 ml;25,000;/img/huile.jpg;50;Ralentit la repousse, nourrit la peau.
+NEL-114;Bébé & Maman;Huile de Massage Amande Douce;100 ml;18,900;/img/huile.jpg;;Sans stock dans le fichier : le stock par défaut de l'écran d'import s'applique.
+NEL-115;Cheveux;Shampoing Doux Quotidien;250 ml;14,500;/img/deo.jpg;60;Tous types de cheveux, usage fréquent.
+;Soins Visage;;30 ml;abc;/img/huile.jpg;5;Ligne volontairement invalide : désignation vide et prix incorrect — doit être ignorée.
+NEL-116;Soins Visage;Tonique Concombre;200 ml;-5;/img/huile.jpg;10;Ligne volontairement invalide : prix négatif — doit être ignorée.

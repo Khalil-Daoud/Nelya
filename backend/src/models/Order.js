@@ -36,6 +36,11 @@ const Order = sequelize.define('Order', {
   },
   notes: {
     type: DataTypes.TEXT
+  },
+  points_awarded: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0
   }
 }, {
   timestamps: true,

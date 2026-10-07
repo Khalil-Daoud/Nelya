@@ -77,11 +77,19 @@ export class WishlistComponent implements OnInit {
   ) {}
 
   ngOnInit() {
+    const ids = this.wishlistService.idsList;
+    if (!ids.length) {
+      this.products = [];
+      this.loading = false;
+      return;
+    }
+
+    // On demande exactement les produits mis de côté, au lieu de filtrer
+    // le catalogue entier une fois téléchargé.
     this.loading = true;
-    this.crudService.getAll<any>('products').subscribe({
-      next: all => {
-        const ids = this.wishlistService.idsList;
-        this.products = all.filter(p => ids.includes(String(p.id)));
+    this.crudService.getPage<any>('products', { ids: ids.join(','), limit: 100 }).subscribe({
+      next: page => {
+        this.products = page.data;
         this.loading = false;
       },
       error: () => { this.loading = false; }

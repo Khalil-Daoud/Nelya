@@ -10,6 +10,7 @@ export const ADMIN_ROUTES: Routes = [
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
       { path: 'dashboard', loadComponent: () => import('./dashboard/dashboard.component').then(m => m.DashboardComponent) },
       { path: 'products', loadComponent: () => import('./products-manager/products-manager.component').then(m => m.ProductsManagerComponent) },
+      { path: 'stock', loadComponent: () => import('./stock-manager/stock-manager.component').then(m => m.StockManagerComponent) },
       { path: 'categories', loadComponent: () => import('./categories-manager/categories-manager.component').then(m => m.CategoriesManagerComponent) },
       { path: 'orders', loadComponent: () => import('./orders-manager/orders-manager.component').then(m => m.OrdersManagerComponent) },
       {

@@ -35,6 +35,10 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
           <div class="avatar">{{ initials }}</div>
           <h1>{{ user?.first_name }} {{ user?.last_name }}</h1>
           <span class="role-badge" [ngClass]="user?.role || ''">{{ user?.role }}</span>
+          <div class="points-badge" *ngIf="user?.role === 'client'">
+            <mat-icon>stars</mat-icon>
+            {{ user?.loyalty_points || 0 }} point{{ (user?.loyalty_points || 0) > 1 ? 's' : '' }} fidélité
+          </div>
         </div>
 
         <div class="profile-grid">
@@ -49,6 +53,7 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
               <div class="info-row"><span class="label">Prénom</span><span class="value">{{ user?.first_name }}</span></div>
               <div class="info-row"><span class="label">Nom</span><span class="value">{{ user?.last_name }}</span></div>
               <div class="info-row"><span class="label">Email</span><span class="value">{{ user?.email }}</span></div>
+              <div class="info-row" *ngIf="user?.role === 'client'"><span class="label">Points fidélité</span><span class="value">{{ user?.loyalty_points || 0 }}</span></div>
               <div class="info-row"><span class="label">Membre depuis</span><span class="value">{{ createdDate }}</span></div>
             </div>
 
@@ -113,6 +118,7 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
               </div>
               <div class="order-bottom">
                 <span class="order-total">Total : <strong>{{ order.total_amount | formatCurrency }}</strong></span>
+                <span class="order-points" *ngIf="order.points_awarded > 0">+{{ order.points_awarded }} pts</span>
                 <span class="order-pay">{{ order.notes ? extractPay(order.notes) : '' }}</span>
               </div>
             </div>
@@ -148,6 +154,13 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     .role-badge.admin { background: var(--luxe-gold); color: var(--luxe-black); }
     .role-badge.client { background: var(--luxe-success-bg); color: var(--luxe-success); }
     .role-badge.seller { background: var(--luxe-info-bg); color: var(--luxe-info); }
+    .points-badge {
+      display: inline-flex; align-items: center; gap: 8px; margin-top: 16px;
+      padding: 8px 16px; border-radius: var(--radius-full);
+      background: var(--luxe-offwhite); border: 1px solid var(--luxe-border);
+      color: var(--luxe-black); font-size: 0.88rem; font-weight: 600;
+    }
+    .points-badge mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--luxe-gold); }
 
     .profile-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 34px; align-items: start; }
     .card {
@@ -204,6 +217,7 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     .order-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
     .order-total { color: var(--luxe-text-muted); font-size: 0.92rem; }
     .order-total strong { color: var(--luxe-black); font-family: var(--font-heading); font-size: 1.25rem; }
+    .order-points { color: var(--luxe-gold); font-weight: 700; font-size: 0.88rem; letter-spacing: 0.5px; }
     .order-pay { color: var(--luxe-text-muted); font-size: 0.8rem; }
 
     .no-orders { text-align: center; padding: 70px 20px; border: 1px dashed var(--luxe-border); border-radius: var(--radius-lg); }
@@ -243,6 +257,7 @@ export class ProfileComponent implements OnInit {
   }
 
   ngOnInit() {
+    this.authService.refreshMe();
     this.authService.currentUser$.subscribe(user => {
       this.user = user;
       if (user) {
