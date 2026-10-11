@@ -46,6 +46,17 @@ function customerFirstName(order) {
   return String(order.guest_name || '').trim().split(/\s+/)[0] || '';
 }
 
+function parseExtraFields(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function toPublicOrder(order) {
   const json = typeof order.toJSON === 'function' ? order.toJSON() : order;
   return {
@@ -56,6 +67,7 @@ function toPublicOrder(order) {
     total_amount: json.total_amount,
     shipping_address: json.shipping_address || '',
     phone: json.phone || '',
+    extra_fields: parseExtraFields(json.extra_fields),
     guest_name: json.guest_name || [json.User?.first_name, json.User?.last_name].filter(Boolean).join(' '),
     items: (json.items || []).map((item) => ({
       name: item.Product?.name || 'Produit',
@@ -76,5 +88,6 @@ module.exports = {
   statusLabel,
   customerEmail,
   customerFirstName,
+  parseExtraFields,
   toPublicOrder
 };

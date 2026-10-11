@@ -5,15 +5,43 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { RouterLink } from '@angular/router';
 import { CrudService } from '../../services/crud.service';
+import { ApiService } from '../../services/api.service';
 import { SettingsService } from '../../services/settings.service';
 import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
-import { forkJoin } from 'rxjs';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 interface Period {
   value: string;
   label: string;
   shortLabel: string;
 }
+
+interface DonutSlice {
+  key: string;
+  label: string;
+  value: number;
+  percent: number;
+  color: string;
+  dash: number;
+  offset: number;
+}
+
+interface TopProduct {
+  name: string;
+  qty: number;
+  revenue: number;
+}
+
+const STATUS_META: Record<string, { label: string; color: string }> = {
+  pending: { label: 'En attente', color: '#b54708' },
+  confirmed: { label: 'Confirmée', color: '#175cd3' },
+  shipped: { label: 'Expédiée', color: '#6941c6' },
+  delivered: { label: 'Livrée', color: '#067647' },
+  cancelled: { label: 'Annulée', color: '#b42318' }
+};
+
+const CATEGORY_COLORS = ['#c6a04a', '#2c2c2c', '#8b7355', '#175cd3', '#067647', '#6941c6', '#b54708'];
 
 const PERIODS: Period[] = [
   { value: '7d', label: '7 derniers jours', shortLabel: '7 jours' },
@@ -54,6 +82,19 @@ const PERIODS: Period[] = [
             <span class="metric-trend">{{m.trend}}</span>
           </div>
         </div>
+      </div>
+
+      <div class="alerts" *ngIf="pendingCount || stock.outOfStock || stock.lowStock">
+        <a class="alert pending" *ngIf="pendingCount" routerLink="/admin/orders">
+          <mat-icon>hourglass_empty</mat-icon>
+          {{ pendingCount }} commande{{ pendingCount > 1 ? 's' : '' }} en attente
+        </a>
+        <a class="alert stock" *ngIf="stock.outOfStock || stock.lowStock" routerLink="/admin/stock">
+          <mat-icon>inventory_2</mat-icon>
+          <span *ngIf="stock.outOfStock">{{ stock.outOfStock }} en rupture</span>
+          <span *ngIf="stock.outOfStock && stock.lowStock"> · </span>
+          <span *ngIf="stock.lowStock">{{ stock.lowStock }} stock faible</span>
+        </a>
       </div>
 
       <div class="charts-row">
@@ -106,6 +147,108 @@ const PERIODS: Period[] = [
           </mat-card-content>
         </mat-card>
       </div>
+
+      <div class="insights-row">
+        <mat-card class="glass-panel donut-card">
+          <mat-card-header>
+            <mat-card-title>Statuts</mat-card-title>
+            <p class="card-sub">{{ statusTotal }} commande{{ statusTotal > 1 ? 's' : '' }} · {{ pendingCount }} à traiter</p>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="donut-head">
+              <div class="donut-figure">
+                <svg viewBox="0 0 160 160" class="donut">
+                  <circle class="donut-track" cx="80" cy="80" r="56"></circle>
+                  <circle *ngFor="let s of statusSlices"
+                    cx="80" cy="80" r="56"
+                    [attr.stroke]="s.color"
+                    [attr.stroke-dasharray]="s.dash + ' ' + donutGap"
+                    [attr.stroke-dashoffset]="s.offset"
+                    transform="rotate(-90 80 80)"></circle>
+                </svg>
+                <div class="donut-center">
+                  <strong>{{ statusTotal }}</strong>
+                  <small>total</small>
+                </div>
+              </div>
+            </div>
+            <ul class="stat-rows">
+              <li *ngFor="let s of statusRows">
+                <div class="stat-line">
+                  <i [style.background]="s.color"></i>
+                  <span>{{ s.label }}</span>
+                  <strong>{{ s.value }}</strong>
+                  <small>{{ s.percent }}%</small>
+                </div>
+                <div class="bar"><b [style.width.%]="s.percent" [style.background]="s.color"></b></div>
+              </li>
+            </ul>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="glass-panel donut-card">
+          <mat-card-header>
+            <mat-card-title>Catégories</mat-card-title>
+            <p class="card-sub">CA des commandes actives</p>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="donut-empty" *ngIf="!categorySlices.length">Pas encore de ventes classées.</div>
+            <ng-container *ngIf="categorySlices.length">
+              <div class="donut-head">
+                <div class="donut-figure">
+                  <svg viewBox="0 0 160 160" class="donut">
+                    <circle class="donut-track" cx="80" cy="80" r="56"></circle>
+                    <circle *ngFor="let s of categorySlices"
+                      cx="80" cy="80" r="56"
+                      [attr.stroke]="s.color"
+                      [attr.stroke-dasharray]="s.dash + ' ' + donutGap"
+                      [attr.stroke-dashoffset]="s.offset"
+                      transform="rotate(-90 80 80)"></circle>
+                  </svg>
+                  <div class="donut-center">
+                    <strong class="money">{{ categoryTotal | formatCurrency }}</strong>
+                    <small>CA</small>
+                  </div>
+                </div>
+              </div>
+              <ul class="stat-rows">
+                <li *ngFor="let s of categorySlices">
+                  <div class="stat-line">
+                    <i [style.background]="s.color"></i>
+                    <span>{{ s.label }}</span>
+                    <strong>{{ s.value | formatCurrency }}</strong>
+                    <small>{{ s.percent }}%</small>
+                  </div>
+                  <div class="bar"><b [style.width.%]="s.percent" [style.background]="s.color"></b></div>
+                </li>
+              </ul>
+            </ng-container>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="glass-panel top-card">
+          <mat-card-header>
+            <mat-card-title>Meilleurs articles</mat-card-title>
+            <p class="card-sub">{{ topUnits }} unité{{ topUnits > 1 ? 's' : '' }} vendue{{ topUnits > 1 ? 's' : '' }} sur la période</p>
+          </mat-card-header>
+          <mat-card-content>
+            <div class="donut-empty" *ngIf="!topProducts.length">Aucun article vendu sur cette période.</div>
+            <ol class="top-list" *ngIf="topProducts.length">
+              <li *ngFor="let p of topProducts; let i = index">
+                <span class="rank">{{ i + 1 }}</span>
+                <div class="top-meta">
+                  <div class="top-head">
+                    <strong>{{ p.name }}</strong>
+                    <small>{{ shareOf(p.qty) }}%</small>
+                  </div>
+                  <span>{{ p.qty }} vendu{{ p.qty > 1 ? 's' : '' }} · {{ p.revenue | formatCurrency }}</span>
+                  <div class="bar"><b [style.width.%]="topBar(p.qty)"></b></div>
+                </div>
+              </li>
+            </ol>
+          </mat-card-content>
+        </mat-card>
+      </div>
     </div>
   `,
   styles: [`
@@ -135,7 +278,7 @@ const PERIODS: Period[] = [
 
     .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 40px; }
     .chart-card, .orders-summary { border-radius: var(--radius-md); padding: 30px; border: 1px solid var(--luxe-border); box-shadow: var(--shadow-subtle) !important; background: var(--luxe-white) !important; }
-    mat-card-header { padding: 0 0 20px 0 !important; border-bottom: 1px solid var(--luxe-border); margin-bottom: 20px; }
+    mat-card-header { padding: 0 0 16px 0 !important; border-bottom: 1px solid var(--luxe-border); margin-bottom: 18px; display: block !important; }
     mat-card-title { font-family: var(--font-body) !important; font-size: 1.1rem !important; letter-spacing: 2px; text-transform: uppercase; font-weight: 600 !important; color: var(--luxe-charcoal); }
 
     .area-chart { width: 100%; height: 280px; }
@@ -158,9 +301,60 @@ const PERIODS: Period[] = [
     .view-all { width: 100%; margin-top: 20px; letter-spacing: 2px; border: 1px solid var(--luxe-border) !important; color: var(--luxe-charcoal) !important; border-radius: var(--radius-sm) !important; padding: 10px !important; }
     .view-all:hover { background: var(--luxe-black) !important; color: var(--luxe-white) !important; }
 
+    .alerts { display: flex; flex-wrap: wrap; gap: 12px; margin: -20px 0 36px; }
+    .alert {
+      display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+      padding: 10px 16px; border-radius: 999px; font-size: 0.82rem; font-weight: 600;
+    }
+    .alert mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    .alert.pending { background: #fffaeb; color: #b54708; }
+    .alert.stock { background: #fef3f2; color: #b42318; }
+
+    .insights-row { display: grid; grid-template-columns: 1fr 1fr 1.15fr; gap: 30px; margin-top: 40px; align-items: stretch; }
+    .donut-card, .top-card { border-radius: var(--radius-md); padding: 24px; border: 1px solid var(--luxe-border); box-shadow: var(--shadow-subtle) !important; background: var(--luxe-white) !important; }
+    .card-sub { margin: 6px 0 0; font-size: 0.78rem; font-weight: 400; color: var(--luxe-text-muted); letter-spacing: 0; text-transform: none; }
+    .donut-head { display: flex; justify-content: center; margin-bottom: 18px; }
+    .donut-figure { position: relative; width: 148px; height: 148px; }
+    .donut { width: 148px; height: 148px; }
+    .donut circle { fill: none; stroke-width: 18; stroke-linecap: butt; }
+    .donut-track { stroke: #f1eee8; }
+    .donut-center {
+      position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .donut-center strong { font-family: var(--font-heading); font-size: 1.7rem; line-height: 1; color: var(--luxe-black); }
+    .donut-center strong.money { font-size: 0.95rem; }
+    .donut-center small { font-size: 0.68rem; letter-spacing: 1px; text-transform: uppercase; color: var(--luxe-text-muted); margin-top: 4px; }
+    .donut-empty { color: var(--luxe-text-muted); font-size: 0.88rem; padding: 28px 0; text-align: center; }
+
+    .stat-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+    .stat-line { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 8px; align-items: center; font-size: 0.82rem; }
+    .stat-line i { width: 10px; height: 10px; border-radius: 50%; }
+    .stat-line span, .stat-line strong { color: var(--luxe-charcoal); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stat-line strong { font-weight: 600; }
+    .stat-line small { color: var(--luxe-text-muted); min-width: 32px; text-align: right; }
+
+    .top-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+    .top-list li { display: flex; gap: 12px; align-items: flex-start; }
+    .rank {
+      width: 26px; height: 26px; border-radius: 50%; background: var(--luxe-offwhite);
+      border: 1px solid var(--luxe-border); display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; color: var(--luxe-charcoal); flex-shrink: 0; margin-top: 2px;
+    }
+    .top-meta { flex: 1; min-width: 0; }
+    .top-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .top-head strong {
+      font-size: 0.92rem; color: var(--luxe-black); font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    }
+    .top-head small { color: var(--luxe-text-muted); flex-shrink: 0; }
+    .top-meta span { font-size: 0.75rem; color: var(--luxe-text-muted); }
+    .bar { height: 6px; background: #f1eee8; border-radius: 99px; margin-top: 6px; overflow: hidden; }
+    .bar b { display: block; height: 100%; background: var(--luxe-gold); border-radius: 99px; min-width: 0; }
+
     @media (max-width: 1200px) {
       .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .charts-row { grid-template-columns: 1fr; }
+      .charts-row, .insights-row { grid-template-columns: 1fr; }
       .header { flex-direction: column; }
       .period-filter { width: 100%; overflow-x: auto; }
     }
@@ -182,13 +376,29 @@ export class DashboardComponent implements OnInit {
   gridLines: any[] = [];
   recentOrders: any[] = [];
   totalRevenue = 0;
+  pendingCount = 0;
+  statusTotal = 0;
+  categoryTotal = 0;
+  topUnits = 0;
+  statusSlices: DonutSlice[] = [];
+  statusRows: DonutSlice[] = [];
+  categorySlices: DonutSlice[] = [];
+  topProducts: TopProduct[] = [];
+  stock = { outOfStock: 0, lowStock: 0, lowThreshold: 10 };
+  readonly donutCirc = 2 * Math.PI * 56;
+  readonly donutGap = this.donutCirc;
   private ordersData: any[] = [];
   private usersData: any[] = [];
+  private topQtyMax = 1;
 
   readonly chartWidth = 700;
   readonly chartHeight = 300;
 
-  constructor(private crud: CrudService, private settings: SettingsService) {}
+  constructor(
+    private crud: CrudService,
+    private api: ApiService,
+    private settings: SettingsService
+  ) {}
 
   get periodLabel(): string {
     return this.periods.find(p => p.value === this.selectedPeriod)?.label || '';
@@ -206,11 +416,19 @@ export class DashboardComponent implements OnInit {
   loadDashboardData() {
     forkJoin({
       orders: this.crud.getAll<any>('orders'),
-      users: this.crud.getAll<any>('users')
+      users: this.crud.getAll<any>('users'),
+      stock: this.api.get<any>('products/stock-summary', { low: 10 }).pipe(
+        catchError(() => of({ outOfStock: 0, lowStock: 0, lowThreshold: 10 }))
+      )
     }).subscribe({
-      next: ({ orders, users }) => {
+      next: ({ orders, users, stock }) => {
         this.ordersData = orders;
         this.usersData = users;
+        this.stock = {
+          outOfStock: Number(stock?.outOfStock) || 0,
+          lowStock: Number(stock?.lowStock) || 0,
+          lowThreshold: Number(stock?.lowThreshold) || 10
+        };
         this.recalculateAll();
       },
       error: (err) => {
@@ -229,6 +447,7 @@ export class DashboardComponent implements OnInit {
     this.calculateMetrics(filtered, this.usersData);
     this.calculateChart(filtered);
     this.calculateRecentOrders(filtered, this.usersData);
+    this.calculateInsights(filtered);
   }
 
   /** Date de début de la période sélectionnée (null = pas de borne, "Depuis le début") */
@@ -249,20 +468,36 @@ export class DashboardComponent implements OnInit {
     return orders.filter(o => new Date(o.createdAt || o.created_at) >= start);
   }
 
+  private orderProfit(order: any): number {
+    const items = order?.items || [];
+    if (!items.length) return 0;
+    return items.reduce((sum: number, item: any) => {
+      const sale = Number(item.unit_price) || 0;
+      const cost = Number(item.cost_price ?? item.Product?.cost_price) || 0;
+      const qty = Number(item.quantity) || 0;
+      return sum + (sale - cost) * qty;
+    }, 0);
+  }
+
   calculateMetrics(orders: any[], users: any[]) {
     const activeOrders = orders.filter(o => o.status !== 'cancelled');
     const totalRevenue = activeOrders.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
+    const totalProfit = activeOrders.reduce((sum, o) => sum + this.orderProfit(o), 0);
     const clients = users.filter(u => u.role === 'client');
     const newClientsCount = clients.length;
     const conversionRate = newClientsCount > 0
       ? ((orders.length / newClientsCount) * 100).toFixed(1) + '%'
       : '0%';
+    const symbol = this.settings.currency.symbol;
+
+    const avgBasket = activeOrders.length ? totalRevenue / activeOrders.length : 0;
+    this.pendingCount = orders.filter(o => o.status === 'pending').length;
 
     this.metrics = [
-      { title: 'Chiffre d\'Affaires', value: `${totalRevenue.toLocaleString('fr-FR')} ${this.settings.currency.symbol}`, icon: 'payments', trend: this.periodLabel },
+      { title: 'Chiffre d\'Affaires', value: `${totalRevenue.toLocaleString('fr-FR')} ${symbol}`, icon: 'payments', trend: this.periodLabel },
+      { title: 'Profit', value: `${totalProfit.toLocaleString('fr-FR')} ${symbol}`, icon: 'savings', trend: 'Vente − achat, commandes actives' },
       { title: 'Commandes', value: orders.length.toString(), icon: 'shopping_cart', trend: `${activeOrders.length} actives — ${this.periodLabel.toLowerCase()}` },
-      { title: 'Clients', value: newClientsCount.toString(), icon: 'person_add', trend: 'Comptes clients (total)' },
-      { title: 'Taux Conversion', value: conversionRate, icon: 'insights', trend: 'Commandes / clients' }
+      { title: 'Panier moyen', value: `${avgBasket.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} ${symbol}`, icon: 'receipt_long', trend: `${newClientsCount} clients · ${conversionRate}` }
     ];
   }
 
@@ -369,8 +604,11 @@ export class DashboardComponent implements OnInit {
 
     this.recentOrders = sorted.slice(0, 6).map(o => {
       const userObj = users.find(u => u.id === o.user_id);
-      const name = userObj ? `${userObj.first_name} ${userObj.last_name[0]}.` : 'Client';
-      const userInitial = userObj?.first_name ? userObj.first_name[0].toUpperCase() : 'C';
+      const guest = String(o.guest_name || '').trim();
+      const name = userObj
+        ? `${userObj.first_name} ${userObj.last_name?.[0] || ''}.`
+        : (guest || 'Invité');
+      const userInitial = (userObj?.first_name || guest || 'I')[0].toUpperCase();
 
       const diffMs = new Date().getTime() - new Date(o.createdAt || o.created_at).getTime();
       const diffMins = Math.floor(diffMs / 60000);
@@ -399,5 +637,96 @@ export class DashboardComponent implements OnInit {
         amount: parseFloat(o.total_amount || 0).toFixed(2)
       };
     });
+  }
+
+  topBar(qty: number): number {
+    return this.topQtyMax ? Math.max(8, Math.round((qty / this.topQtyMax) * 100)) : 0;
+  }
+
+  shareOf(qty: number): number {
+    return this.topUnits ? Math.round((qty / this.topUnits) * 100) : 0;
+  }
+
+  private calculateInsights(orders: any[]) {
+    this.statusTotal = orders.length;
+    const statusItems = Object.keys(STATUS_META).map((key) => ({
+      key,
+      label: STATUS_META[key].label,
+      value: orders.filter((o) => o.status === key).length,
+      color: STATUS_META[key].color
+    }));
+    this.statusSlices = this.buildDonut(statusItems);
+    this.statusRows = this.withPercents(statusItems);
+
+    const active = orders.filter((o) => o.status !== 'cancelled');
+    const catMap = new Map<string, number>();
+    const prodMap = new Map<string, TopProduct>();
+
+    for (const order of active) {
+      for (const item of order.items || []) {
+        const qty = Number(item.quantity) || 0;
+        const sale = Number(item.unit_price) || 0;
+        const revenue = sale * qty;
+        const category = String(item.Product?.category || 'Sans catégorie').trim() || 'Sans catégorie';
+        catMap.set(category, (catMap.get(category) || 0) + revenue);
+
+        const id = String(item.product_id || item.Product?.id || item.Product?.name || Math.random());
+        const current = prodMap.get(id) || {
+          name: item.Product?.name || 'Produit',
+          qty: 0,
+          revenue: 0
+        };
+        current.qty += qty;
+        current.revenue += revenue;
+        prodMap.set(id, current);
+      }
+    }
+
+    const cats = [...catMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([label, value], i) => ({
+        key: label,
+        label,
+        value,
+        color: CATEGORY_COLORS[i % CATEGORY_COLORS.length]
+      }));
+    this.categorySlices = this.buildDonut(cats);
+    this.categoryTotal = cats.reduce((sum, item) => sum + item.value, 0);
+
+    this.topProducts = [...prodMap.values()]
+      .sort((a, b) => b.qty - a.qty || b.revenue - a.revenue)
+      .slice(0, 5);
+    this.topQtyMax = this.topProducts[0]?.qty || 1;
+    this.topUnits = this.topProducts.reduce((sum, p) => sum + p.qty, 0);
+  }
+
+  private withPercents(items: Array<{ key: string; label: string; value: number; color: string }>): DonutSlice[] {
+    const total = items.reduce((sum, item) => sum + item.value, 0);
+    return items.map((item) => ({
+      ...item,
+      percent: total ? Math.round((item.value / total) * 100) : 0,
+      dash: 0,
+      offset: 0
+    }));
+  }
+
+  private buildDonut(items: Array<{ key: string; label: string; value: number; color: string }>): DonutSlice[] {
+    const total = items.reduce((sum, item) => sum + item.value, 0);
+    if (!total) return [];
+    let acc = 0;
+    return items
+      .filter((item) => item.value > 0)
+      .map((item) => {
+        const dash = (item.value / total) * this.donutCirc;
+        const slice: DonutSlice = {
+          ...item,
+          percent: Math.round((item.value / total) * 100),
+          dash,
+          offset: -acc
+        };
+        acc += dash;
+        return slice;
+      });
   }
 }

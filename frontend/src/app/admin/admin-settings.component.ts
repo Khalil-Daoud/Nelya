@@ -7,22 +7,25 @@ import { MatRadioModule } from '@angular/material/radio';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
 import { FormsModule } from '@angular/forms';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { SettingsService, Currency, WhatsAppSettings, LoyaltyTier, DEFAULT_LOYALTY_TIERS, PermissionDef, PermissionGroup } from '../services/settings.service';
+import { SettingsService, Currency, WhatsAppSettings, LoyaltyTier, DEFAULT_LOYALTY_TIERS, DEFAULT_CHECKOUT_FIELDS, DEFAULT_HERO_IMAGE, CheckoutField, PermissionDef, PermissionGroup } from '../services/settings.service';
 import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
+import { ImageUrlPipe } from '../pipes/image-url.pipe';
+import { ApiService } from '../services/api.service';
 
 @Component({
   selector: 'app-admin-settings',
   standalone: true,
   imports: [
     CommonModule, MatCardModule, MatButtonModule, MatIconModule, MatRadioModule,
-    MatCheckboxModule, MatFormFieldModule, MatInputModule, FormsModule,
-    MatSnackBarModule, FormatCurrencyPipe
+    MatCheckboxModule, MatFormFieldModule, MatInputModule, MatSelectModule, FormsModule,
+    MatSnackBarModule, FormatCurrencyPipe, ImageUrlPipe
   ],
   template: `
     <div class="settings-page fade-in">
-      <p class="lead">Devise, commande, fidélité, WhatsApp et groupes de permissions.</p>
+      <p class="lead">Image d’accueil, devise, commande, fidélité, WhatsApp et groupes de permissions.</p>
 
       <section class="perms">
         <header class="panel-head">
@@ -93,6 +96,30 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
         <div class="stack">
           <section class="panel">
             <header class="panel-head">
+              <h2>Page d’accueil</h2>
+              <p>Photo du bandeau plein écran. Format paysage, idéalement 2000 × 1200 px.</p>
+            </header>
+
+            <div class="hero-preview">
+              <img *ngIf="heroImage" [src]="heroImage | imageUrl" alt="Aperçu de l’accueil">
+              <span *ngIf="!heroImage">Aucune image</span>
+            </div>
+
+            <div class="hero-actions">
+              <input type="file" hidden #heroInput accept="image/*" (change)="onHeroSelected($event)">
+              <button type="button" mat-stroked-button [disabled]="uploadingHero" (click)="heroInput.click()">
+                <mat-icon>upload</mat-icon>
+                {{ uploadingHero ? 'Envoi…' : 'Choisir une image' }}
+              </button>
+              <button type="button" mat-button [disabled]="savingHero || heroImage === defaultHeroImage"
+                (click)="resetHeroImage()">
+                Image par défaut
+              </button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <header class="panel-head">
               <h2>Devise</h2>
               <p>Les montants restent les mêmes, seul le symbole change.</p>
             </header>
@@ -140,6 +167,48 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
                 </span>
               </button>
             </div>
+
+            <h3 class="fields-title">Champs du formulaire de commande</h3>
+            <p class="fields-hint">Cochez pour afficher un champ, décochez pour le retirer. Ajoutez les vôtres (ville, étage, code, etc.).</p>
+
+            <div class="field-row" *ngFor="let field of checkoutFields; let i = index">
+              <mat-checkbox [(ngModel)]="field.enabled"></mat-checkbox>
+              <input class="field-label" [(ngModel)]="field.label" maxlength="80" [placeholder]="'Libellé'">
+              <mat-select *ngIf="!field.builtin" class="field-type" [(ngModel)]="field.type">
+                <mat-option value="text">Texte</mat-option>
+                <mat-option value="textarea">Paragraphe</mat-option>
+                <mat-option value="email">Email</mat-option>
+                <mat-option value="tel">Téléphone</mat-option>
+              </mat-select>
+              <span *ngIf="field.builtin" class="field-type-lock">{{ field.guestOnly ? 'Invité' : 'Tous' }}</span>
+              <mat-checkbox [(ngModel)]="field.required" [disabled]="!field.enabled">Obligatoire</mat-checkbox>
+              <button *ngIf="!field.builtin" type="button" class="icon-btn" (click)="removeCheckoutField(i)" aria-label="Supprimer le champ">
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+
+            <div class="field-add">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Nouveau champ</mat-label>
+                <input matInput [(ngModel)]="newFieldLabel" maxlength="80" placeholder="Ex: Ville, étage"
+                  (keydown.enter)="$event.preventDefault(); addCheckoutField()">
+              </mat-form-field>
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="type-pick">
+                <mat-label>Type</mat-label>
+                <mat-select [(ngModel)]="newFieldType">
+                  <mat-option value="text">Texte</mat-option>
+                  <mat-option value="textarea">Paragraphe</mat-option>
+                  <mat-option value="email">Email</mat-option>
+                  <mat-option value="tel">Téléphone</mat-option>
+                </mat-select>
+              </mat-form-field>
+              <button mat-stroked-button type="button" [disabled]="!newFieldLabel.trim()" (click)="addCheckoutField()">
+                <mat-icon>add</mat-icon> Ajouter
+              </button>
+            </div>
+            <button mat-flat-button color="primary" class="save-btn" [disabled]="savingFields" (click)="saveCheckoutFields()">
+              Enregistrer les champs
+            </button>
           </section>
 
           <section class="whatsapp">
@@ -154,7 +223,7 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
             <div class="wa-body">
               <div class="wa-col">
                 <h3>Numéro boutique</h3>
-                <p>Chaque commande y arrive. C’est aussi le destinataire si le client envoie lui-même le récapitulatif.</p>
+                <p>C’est l’expéditeur du WhatsApp automatique. Une alerte de nouvelle commande peut aussi y arriver.</p>
                 <mat-form-field appearance="outline" class="full" subscriptSizing="dynamic">
                   <mat-label>Indicatif pays inclus</mat-label>
                   <input matInput [(ngModel)]="whatsappNumber" placeholder="+216 22 580 632">
@@ -165,35 +234,54 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
               </div>
 
               <div class="wa-col wa-col-confirm">
-                <h3>Confirmation client</h3>
+                <h3>À la commande</h3>
                 <p>
-                  WhatsApp n’est pas obligatoire. Sans WhatsApp, la commande reste visible ici en
-                  <strong>En attente</strong> — vous la confirmez dans le tableau Commandes.
-                  Les invités reçoivent aussi un email de suivi si
-                  <code>SMTP_HOST</code> et <code>SMTP_FROM</code> sont configurés.
+                  Deux envois possibles : le client vous envoie le récapitulatif,
+                  et/ou le serveur l’envoie au numéro du formulaire.
                 </p>
                 <mat-checkbox
                   [(ngModel)]="whatsappInvite"
                   (change)="saveWhatsAppInvite()"
                   [disabled]="savingInvite">
-                  Proposer WhatsApp après la commande
+                  Autoriser le client à nous envoyer le récapitulatif sur WhatsApp
+                </mat-checkbox>
+                <mat-checkbox
+                  [(ngModel)]="notifyCustomer"
+                  (change)="saveNotifyCustomer()"
+                  [disabled]="savingNotify">
+                  Envoyer automatiquement le récapitulatif au numéro du client
                 </mat-checkbox>
                 <div class="pill" [class.ok]="whatsapp.providerReady">
                   {{ whatsapp.providerReady
-                    ? 'Envoi automatique disponible'
-                    : 'Envoi automatique indisponible' }}
+                    ? 'Compte WhatsApp boutique connecté'
+                    : 'Compte WhatsApp boutique non connecté' }}
                 </div>
-                <p *ngIf="!whatsapp.providerReady" class="wa-auto-hint">
-                  Pour envoyer le message à la place du client :
-                  <code>WHATSAPP_CLOUD_TOKEN</code> et <code>WHATSAPP_CLOUD_PHONE_ID</code>, ou Twilio.
+                <p class="wa-auto-hint">
+                  Pour envoyer <strong>tout de suite sur ton téléphone</strong> (test) :
+                  ajoute le contact WhatsApp <strong>+34 623 80 11 90</strong>,
+                  envoie <em>I allow callmebot to send me messages</em>,
+                  colle la clé API reçue, puis clique Test.
+                  CallMeBot n’envoie qu’au numéro qui a reçu la clé.
                 </p>
-                <mat-checkbox
-                  *ngIf="whatsappInvite"
-                  [(ngModel)]="notifyCustomer"
-                  (change)="saveNotifyCustomer()"
-                  [disabled]="savingNotify || !whatsapp.providerReady">
-                  Envoyer automatiquement (API WhatsApp)
-                </mat-checkbox>
+                <mat-form-field appearance="outline" class="full" subscriptSizing="dynamic">
+                  <mat-label>Clé CallMeBot (test)</mat-label>
+                  <input matInput [(ngModel)]="callmebotKey" autocomplete="off">
+                </mat-form-field>
+                <div class="wa-test">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                    <mat-label>Numéro de test</mat-label>
+                    <span matPrefix class="phone-prefix">+216</span>
+                    <input matInput [(ngModel)]="testPhoneLocal" maxlength="8" inputmode="numeric" placeholder="20 000 000">
+                  </mat-form-field>
+                  <button mat-flat-button color="primary" type="button"
+                    [disabled]="savingGateway || testingWa || !callmebotKey.trim() || testPhoneLocal.length !== 8"
+                    (click)="saveGatewayThenTest()">
+                    {{ testingWa ? 'Envoi…' : 'Envoyer un test' }}
+                  </button>
+                </div>
+                <button mat-stroked-button type="button" [disabled]="savingGateway" (click)="saveGateway()">
+                  Enregistrer la clé
+                </button>
               </div>
             </div>
           </section>
@@ -298,6 +386,14 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
     .preview span { font-size: 0.78rem; color: var(--luxe-text-muted); }
     .preview strong { font-family: var(--font-heading); font-size: 1.25rem; }
     .save-btn { align-self: stretch; }
+    .hero-preview {
+      margin: 16px 0 14px; border-radius: 12px; overflow: hidden;
+      border: 1px solid var(--luxe-border); background: var(--luxe-offwhite);
+      aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center;
+    }
+    .hero-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .hero-preview span { color: var(--luxe-text-muted); font-size: 0.85rem; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
     .choice-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
     .choice {
@@ -313,6 +409,21 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
     .choice.on { border-color: var(--luxe-black); background: var(--luxe-offwhite); }
     .choice.on mat-icon { color: var(--luxe-gold); }
     .choice:disabled { opacity: 0.6; cursor: wait; }
+    .fields-title { margin: 22px 0 4px; font-size: 0.78rem; letter-spacing: 1.4px; text-transform: uppercase; color: var(--luxe-black); }
+    .fields-hint { margin: 0 0 12px; font-size: 0.8rem; color: var(--luxe-text-muted); font-weight: 300; line-height: 1.45; }
+    .field-row {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 8px 0; border-bottom: 1px solid var(--luxe-border);
+    }
+    .field-label {
+      flex: 1; min-width: 140px; padding: 8px 10px; border: 1px solid var(--luxe-border); border-radius: 8px;
+      font-family: var(--font-body); font-size: 0.88rem; color: var(--luxe-black); outline: none; background: #fff;
+    }
+    .field-label:focus { border-color: var(--luxe-gold); }
+    .field-type { width: 120px; font-size: 0.82rem; }
+    .field-type-lock { font-size: 0.72rem; color: var(--luxe-text-muted); min-width: 48px; }
+    .field-add { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 16px; }
+    .field-add .type-pick { width: 140px; }
 
     .loyalty { display: flex; flex-direction: column; overflow: hidden; }
     .loyalty-intro {
@@ -385,6 +496,9 @@ import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
     }
     .pill.ok { background: rgba(37,211,102,0.12); color: #1b7a3d; }
     .wa-auto-hint { margin-top: 10px; }
+    .wa-test { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0 12px; }
+    .wa-test mat-form-field { min-width: 200px; flex: 1; }
+    .phone-prefix { font-weight: 600; padding-right: 6px; }
     code { background: var(--luxe-offwhite); border: 1px solid var(--luxe-border); border-radius: 4px; padding: 1px 5px; font-size: 0.75rem; }
 
     .perms {
@@ -441,6 +555,10 @@ export class AdminSettingsComponent implements OnInit {
 
   guestCheckout = false;
   savingGuest = false;
+  checkoutFields: CheckoutField[] = DEFAULT_CHECKOUT_FIELDS.map((f) => ({ ...f }));
+  newFieldLabel = '';
+  newFieldType: CheckoutField['type'] = 'text';
+  savingFields = false;
 
   whatsapp: WhatsAppSettings = { number: '', invite: true, notifyCustomer: false, providerReady: false, autoSend: false };
   whatsappNumber = '';
@@ -449,6 +567,10 @@ export class AdminSettingsComponent implements OnInit {
   savingNumber = false;
   savingInvite = false;
   savingNotify = false;
+  callmebotKey = '';
+  testPhoneLocal = '';
+  savingGateway = false;
+  testingWa = false;
 
   loyaltyTiers: LoyaltyTier[] = DEFAULT_LOYALTY_TIERS.map(t => ({ ...t }));
   savingLoyalty = false;
@@ -467,7 +589,16 @@ export class AdminSettingsComponent implements OnInit {
   newGroupName = '';
   savingPerms = false;
 
-  constructor(private settings: SettingsService, private snackBar: MatSnackBar) {}
+  heroImage = DEFAULT_HERO_IMAGE;
+  readonly defaultHeroImage = DEFAULT_HERO_IMAGE;
+  uploadingHero = false;
+  savingHero = false;
+
+  constructor(
+    private settings: SettingsService,
+    private snackBar: MatSnackBar,
+    private api: ApiService
+  ) {}
 
   get currencySymbol(): string {
     return this.current?.symbol || 'DT';
@@ -483,6 +614,10 @@ export class AdminSettingsComponent implements OnInit {
       this.guestCheckout = enabled;
     });
 
+    this.settings.checkoutFields$.subscribe((fields) => {
+      this.checkoutFields = (fields || DEFAULT_CHECKOUT_FIELDS).map((f) => ({ ...f }));
+    });
+
     this.settings.whatsapp$.subscribe((w: WhatsAppSettings) => {
       this.whatsapp = w;
       this.whatsappNumber = w.number ? `+${w.number}` : '';
@@ -494,10 +629,17 @@ export class AdminSettingsComponent implements OnInit {
       this.loyaltyTiers = (tiers || DEFAULT_LOYALTY_TIERS).map(t => ({ ...t }));
     });
 
+    this.settings.heroImage$.subscribe((url) => {
+      this.heroImage = url || DEFAULT_HERO_IMAGE;
+    });
+
     this.settings.loadAccess().then((access) => {
       if (access.catalog?.length) this.permissionCatalog = access.catalog;
       if (access.groups?.length) {
         this.permissionGroups = access.groups.map((g) => ({ ...g, permissions: [...(g.permissions || [])] }));
+      }
+      if (access.whatsappGateway) {
+        this.callmebotKey = access.whatsappGateway.callmebotKey || '';
       }
     }).catch(() => {});
   }
@@ -609,6 +751,37 @@ export class AdminSettingsComponent implements OnInit {
     this.saveGuestCheckout();
   }
 
+  addCheckoutField() {
+    const label = this.newFieldLabel.trim();
+    if (!label || this.checkoutFields.length >= 16) return;
+    this.checkoutFields = [...this.checkoutFields, {
+      id: `c_${Date.now().toString(36)}`,
+      type: this.newFieldType,
+      label,
+      enabled: true,
+      required: false,
+      builtin: false,
+      guestOnly: false
+    }];
+    this.newFieldLabel = '';
+  }
+
+  removeCheckoutField(index: number) {
+    if (this.checkoutFields[index]?.builtin) return;
+    this.checkoutFields = this.checkoutFields.filter((_, i) => i !== index);
+  }
+
+  saveCheckoutFields() {
+    this.savingFields = true;
+    this.settings.save({ checkoutFields: this.checkoutFields }).then(() => {
+      this.savingFields = false;
+      this.snackBar.open('Champs du formulaire enregistrés', 'OK', { duration: 3000 });
+    }).catch((err) => {
+      this.savingFields = false;
+      this.snackBar.open(err?.error?.message || 'Impossible d’enregistrer les champs', 'Fermer', { duration: 4000 });
+    });
+  }
+
   saveGuestCheckout() {
     this.savingGuest = true;
     this.settings.setGuestCheckout(this.guestCheckout).then(enabled => {
@@ -636,14 +809,47 @@ export class AdminSettingsComponent implements OnInit {
     });
   }
 
+  saveGateway() {
+    this.savingGateway = true;
+    return this.settings.save({ callmebotKey: this.callmebotKey }).then(() => {
+      this.savingGateway = false;
+      this.snackBar.open('Clé WhatsApp enregistrée', 'OK', { duration: 3000 });
+    }).catch(() => {
+      this.savingGateway = false;
+      this.snackBar.open('Impossible d’enregistrer la clé', 'Fermer', { duration: 4000 });
+    });
+  }
+
+  saveGatewayThenTest() {
+    this.savingGateway = true;
+    this.settings.save({ callmebotKey: this.callmebotKey }).then(() => {
+      this.savingGateway = false;
+      this.sendWhatsAppTest();
+    }).catch(() => {
+      this.savingGateway = false;
+      this.snackBar.open('Impossible d’enregistrer la clé', 'Fermer', { duration: 4000 });
+    });
+  }
+
+  sendWhatsAppTest() {
+    this.testingWa = true;
+    this.settings.testWhatsApp(`+216${this.testPhoneLocal}`).then((res) => {
+      this.testingWa = false;
+      this.snackBar.open(`Test envoyé vers ${res.to}`, 'OK', { duration: 4000 });
+    }).catch((err) => {
+      this.testingWa = false;
+      this.snackBar.open(err?.error?.message || 'Test WhatsApp impossible', 'Fermer', { duration: 6000 });
+    });
+  }
+
   saveWhatsAppInvite() {
     this.savingInvite = true;
     this.settings.save({ whatsappInvite: this.whatsappInvite }).then(() => {
       this.savingInvite = false;
       this.snackBar.open(
         this.whatsappInvite
-          ? 'WhatsApp proposé au client après commande'
-          : 'Pas d’invitation WhatsApp — la commande reste en attente dans Commandes',
+          ? 'Le client pourra vous envoyer le récapitulatif sur WhatsApp'
+          : 'Pas d’envoi du récapitulatif par le client',
         'OK',
         { duration: 3500 }
       );
@@ -659,14 +865,52 @@ export class AdminSettingsComponent implements OnInit {
     this.settings.save({ notifyCustomer: this.notifyCustomer }).then(() => {
       this.savingNotify = false;
       this.snackBar.open(
-        this.notifyCustomer ? 'Confirmation automatique activée' : 'Confirmation automatique désactivée',
+        this.notifyCustomer
+          ? 'Le récapitulatif partira automatiquement au numéro du client'
+          : 'Pas d’envoi automatique au client',
         'OK',
-        { duration: 3000 }
+        { duration: 3500 }
       );
     }).catch(() => {
       this.savingNotify = false;
       this.notifyCustomer = this.settings.whatsapp.notifyCustomer;
       this.snackBar.open('Erreur lors de la mise à jour', 'Fermer', { duration: 4000 });
+    });
+  }
+
+  onHeroSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('purpose', 'hero');
+    this.uploadingHero = true;
+    this.api.post<{ url: string }>('uploads', formData).subscribe({
+      next: (res) => {
+        this.uploadingHero = false;
+        this.persistHero(res.url, 'Image d’accueil mise à jour');
+      },
+      error: (err) => {
+        this.uploadingHero = false;
+        this.snackBar.open(err?.error?.message || 'Envoi de l’image impossible', 'Fermer', { duration: 4000 });
+      }
+    });
+  }
+
+  resetHeroImage() {
+    this.persistHero('', 'Image d’accueil rétablie');
+  }
+
+  private persistHero(url: string, okMessage: string) {
+    this.savingHero = true;
+    this.settings.save({ heroImage: url }).then(() => {
+      this.savingHero = false;
+      this.snackBar.open(okMessage, 'OK', { duration: 3000 });
+    }).catch((err) => {
+      this.savingHero = false;
+      this.snackBar.open(err?.error?.message || 'Impossible d’enregistrer l’image', 'Fermer', { duration: 4000 });
     });
   }
 }

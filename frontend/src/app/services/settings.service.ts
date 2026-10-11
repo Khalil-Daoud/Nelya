@@ -11,7 +11,7 @@ export interface Currency {
 export interface WhatsAppSettings {
   /** Numéro de la boutique au format international sans "+", ex : 21622580632 */
   number: string;
-  /** Proposer WhatsApp au client après commande (lien wa.me) */
+  /** Le client peut envoyer le récapitulatif à la boutique (lien wa.me) */
   invite: boolean;
   notifyCustomer: boolean;
   /** Un fournisseur officiel (Meta ou Twilio) est configuré côté serveur */
@@ -26,12 +26,27 @@ export interface LoyaltyTier {
   points: number;
 }
 
+export interface CheckoutField {
+  id: string;
+  type: 'text' | 'textarea' | 'email' | 'tel';
+  label: string;
+  enabled: boolean;
+  required: boolean;
+  builtin?: boolean;
+  guestOnly?: boolean;
+}
+
 export interface StoreSettings {
   currency: Currency;
   guestCheckout: boolean;
+  heroImage?: string;
+  checkoutFields?: CheckoutField[];
   loyalty?: { tiers: LoyaltyTier[] };
   whatsapp: WhatsAppSettings;
 }
+
+export const DEFAULT_HERO_IMAGE =
+  'https://images.unsplash.com/photo-1612817288484-6f916006741a?auto=format&fit=crop&q=80&w=2000';
 
 const DEFAULT_CURRENCY: Currency = { code: 'EUR', symbol: '€', label: 'Euro' };
 const DEFAULT_WHATSAPP: WhatsAppSettings = {
@@ -61,7 +76,12 @@ export interface SettingsPayload {
   whatsappNumber?: string;
   whatsappInvite?: boolean;
   notifyCustomer?: boolean;
+  callmebotKey?: string;
+  ultramsgInstance?: string;
+  ultramsgToken?: string;
   loyaltyTiers?: LoyaltyTier[];
+  checkoutFields?: CheckoutField[];
+  heroImage?: string;
   permissionGroups?: PermissionGroup[];
 }
 
@@ -69,6 +89,14 @@ export const DEFAULT_LOYALTY_TIERS: LoyaltyTier[] = [
   { min: 0, max: 20, points: 10 },
   { min: 20, max: 50, points: 20 },
   { min: 50, max: 1000, points: 50 }
+];
+
+export const DEFAULT_CHECKOUT_FIELDS: CheckoutField[] = [
+  { id: 'guestName', type: 'text', label: 'Nom et prénom', enabled: true, required: true, builtin: true, guestOnly: true },
+  { id: 'guestEmail', type: 'email', label: 'Email', enabled: true, required: true, builtin: true, guestOnly: true },
+  { id: 'address', type: 'textarea', label: 'Adresse de livraison', enabled: true, required: true, builtin: true },
+  { id: 'phone', type: 'tel', label: 'Numéro de téléphone', enabled: true, required: true, builtin: true },
+  { id: 'notes', type: 'textarea', label: 'Remarque', enabled: false, required: false, builtin: true }
 ];
 
 @Injectable({
@@ -86,6 +114,12 @@ export class SettingsService {
 
   private loyaltyTiersSubject = new BehaviorSubject<LoyaltyTier[]>(DEFAULT_LOYALTY_TIERS);
   public loyaltyTiers$ = this.loyaltyTiersSubject.asObservable();
+
+  private checkoutFieldsSubject = new BehaviorSubject<CheckoutField[]>(DEFAULT_CHECKOUT_FIELDS);
+  public checkoutFields$ = this.checkoutFieldsSubject.asObservable();
+
+  private heroImageSubject = new BehaviorSubject<string>(DEFAULT_HERO_IMAGE);
+  public heroImage$ = this.heroImageSubject.asObservable();
 
   constructor(private api: ApiService) {}
 
@@ -109,6 +143,14 @@ export class SettingsService {
 
   get loyaltyTiers(): LoyaltyTier[] {
     return this.loyaltyTiersSubject.value;
+  }
+
+  get checkoutFields(): CheckoutField[] {
+    return this.checkoutFieldsSubject.value;
+  }
+
+  get heroImage(): string {
+    return this.heroImageSubject.value || DEFAULT_HERO_IMAGE;
   }
 
   pointsForPrice(price: number): number {
@@ -138,8 +180,21 @@ export class SettingsService {
     return firstValueFrom(this.api.putTo<StoreSettings>('settings', payload)).then(s => this.apply(s));
   }
 
-  loadAccess(): Promise<{ catalog: PermissionDef[]; groups: PermissionGroup[] }> {
-    return firstValueFrom(this.api.get<{ catalog: PermissionDef[]; groups: PermissionGroup[] }>('settings/access'));
+  loadAccess(): Promise<{
+    catalog: PermissionDef[];
+    groups: PermissionGroup[];
+    whatsappGateway?: {
+      callmebotKey?: string;
+      ultramsgInstance?: string;
+      ultramsgToken?: string;
+      ready?: boolean;
+    };
+  }> {
+    return firstValueFrom(this.api.get('settings/access'));
+  }
+
+  testWhatsApp(phone: string): Promise<{ sent: boolean; to: string }> {
+    return firstValueFrom(this.api.post<{ sent: boolean; to: string }>('settings/whatsapp-test', { phone }));
   }
 
   savePermissionGroups(groups: PermissionGroup[]): Promise<{ catalog: PermissionDef[]; groups: PermissionGroup[] }> {
@@ -159,5 +214,13 @@ export class SettingsService {
     this.whatsappSubject.next({ ...DEFAULT_WHATSAPP, ...(settings?.whatsapp || {}) });
     const tiers = settings?.loyalty?.tiers;
     this.loyaltyTiersSubject.next(Array.isArray(tiers) && tiers.length ? tiers : DEFAULT_LOYALTY_TIERS);
+    this.checkoutFieldsSubject.next(
+      Array.isArray(settings?.checkoutFields) && settings.checkoutFields.length
+        ? settings.checkoutFields
+        : DEFAULT_CHECKOUT_FIELDS
+    );
+    if (settings?.heroImage) {
+      this.heroImageSubject.next(settings.heroImage);
+    }
   }
 }

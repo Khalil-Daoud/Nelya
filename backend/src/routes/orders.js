@@ -7,15 +7,31 @@ const whatsappService = require('../services/whatsappService');
 const settingsService = require('../services/settingsService');
 const loyaltyService = require('../services/loyaltyService');
 const orderNotify = require('../services/orderNotify');
-const { newPublicToken, isPublicToken, toPublicOrder, trackingUrl } = require('../utils/orderPublic');
+const { newPublicToken, isPublicToken, toPublicOrder, trackingUrl, parseExtraFields } = require('../utils/orderPublic');
+
+function withParsedExtra(order) {
+  const json = typeof order?.toJSON === 'function' ? order.toJSON() : { ...order };
+  json.extra_fields = parseExtraFields(json.extra_fields);
+  return json;
+}
 
 // Le client associé à une commande était inclus en entier, donc avec le hash bcrypt
 // de son mot de passe. On ne remonte que les champs affichés par l'interface.
 const ORDER_USER_ATTRIBUTES = ['id', 'first_name', 'last_name', 'email', 'loyalty_points'];
-const orderIncludes = () => [
-  { model: User, as: 'User', attributes: ORDER_USER_ATTRIBUTES },
-  { model: OrderItem, as: 'items', include: [{ model: Product }] }
-];
+const isStaff = (user) => user && (user.role === 'admin' || user.role === 'seller');
+const orderIncludes = (user) => {
+  const staff = isStaff(user);
+  const itemInclude = {
+    model: OrderItem,
+    as: 'items',
+    include: [staff ? { model: Product } : { model: Product, attributes: { exclude: ['cost_price'] } }]
+  };
+  if (!staff) itemInclude.attributes = { exclude: ['cost_price'] };
+  return [
+    { model: User, as: 'User', attributes: ORDER_USER_ATTRIBUTES },
+    itemInclude
+  ];
+};
 
 // Les commandes invité sont anonymes et décrémentent le stock : on plafonne par IP.
 const guestOrderLimiter = rateLimit({
@@ -29,28 +45,73 @@ const guestOrderLimiter = rateLimit({
 // [SEC-FIX] Le montant est calculé côté serveur à partir des prix en base.
 // L'utilisateur est déduit du token (jamais du body). Les items sont créés.
 router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
-  const { items, shipping_address, phone, notes, guest_name, guest_email } = req.body;
+  const { items, shipping_address, phone, notes, guest_name, guest_email, extra_fields } = req.body;
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'Order must contain at least one item' });
   }
+
+  const checkoutFields = await settingsService.getCheckoutFields();
+  const field = (id) => settingsService.fieldById(checkoutFields, id);
+  const isOn = (id) => {
+    const f = field(id);
+    return Boolean(f && f.enabled);
+  };
+  const must = (id) => {
+    const f = field(id);
+    return Boolean(f && f.enabled && f.required);
+  };
 
   let guest = null;
   if (!req.user) {
     if (!(await settingsService.getGuestCheckout())) {
       return res.status(401).json({ message: 'Veuillez vous connecter pour valider votre commande.' });
     }
-    const name = String(guest_name || '').trim();
-    if (!name) {
+    const name = String(guest_name || '').trim() || (isOn('guestName') ? '' : 'Invité');
+    if (must('guestName') && !name) {
       return res.status(400).json({ message: 'Le nom est obligatoire pour commander sans compte.' });
     }
-    if (!String(phone || '').trim()) {
-      return res.status(400).json({ message: 'Le téléphone est obligatoire pour commander sans compte.' });
-    }
     const email = String(guest_email || '').trim();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (must('guestEmail') && (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
       return res.status(400).json({ message: 'Un email valide est obligatoire pour commander sans compte (récapitulatif et suivi).' });
     }
-    guest = { name, email };
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Email invalide.' });
+    }
+    guest = { name: name || 'Invité', email };
+  }
+
+  const address = isOn('address') ? String(shipping_address || '').trim() : '';
+  if (must('address') && !address) {
+    return res.status(400).json({ message: 'L’adresse de livraison est obligatoire.' });
+  }
+
+  const remark = isOn('notes') ? String(notes || '').trim() : '';
+  if (must('notes') && !remark) {
+    return res.status(400).json({ message: 'La remarque est obligatoire.' });
+  }
+
+  let storedPhone = null;
+  if (isOn('phone')) {
+    const normalizedPhone = settingsService.normalizeWhatsAppNumber(phone);
+    if (!normalizedPhone) {
+      if (must('phone')) {
+        return res.status(400).json({ message: 'Indiquez un numéro de téléphone tunisien valide (8 chiffres).' });
+      }
+    } else {
+      storedPhone = `+${normalizedPhone}`;
+    }
+  }
+
+  const customCatalog = checkoutFields.filter((f) => !f.builtin && f.enabled);
+  const incomingExtra = Array.isArray(extra_fields) ? extra_fields : [];
+  const extraById = new Map(incomingExtra.map((row) => [String(row?.id || ''), row]));
+  const storedExtra = [];
+  for (const custom of customCatalog) {
+    const value = String(extraById.get(custom.id)?.value ?? '').trim().slice(0, 500);
+    if (custom.required && !value) {
+      return res.status(400).json({ message: `${custom.label} est obligatoire.` });
+    }
+    if (value) storedExtra.push({ id: custom.id, label: custom.label, value });
   }
 
   try {
@@ -86,11 +147,13 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
           throw new Error(`Stock insuffisant pour "${product.name}"`);
         }
         const unitPrice = Number(product.price);
+        const unitCost = Number(product.cost_price);
         total += unitPrice * quantity;
         orderItemsData.push({
           product_id: product.id,
           quantity,
-          unit_price: unitPrice
+          unit_price: unitPrice,
+          cost_price: Number.isFinite(unitCost) && unitCost >= 0 ? unitCost : 0
         });
         await product.update({ stock: product.stock - quantity }, { transaction: t });
       }
@@ -107,9 +170,10 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
         guest_email: guest ? guest.email : null,
         public_token: newPublicToken(),
         total_amount: total.toFixed(2),
-        shipping_address,
-        phone,
-        notes,
+        shipping_address: address,
+        phone: storedPhone,
+        notes: remark || (storedPhone ? `Téléphone: ${storedPhone} | Paiement: Espèces à la livraison` : 'Paiement: Espèces à la livraison'),
+        extra_fields: storedExtra.length ? JSON.stringify(storedExtra) : null,
         status: 'pending',
         points_awarded: pointsAwarded
       }, { transaction: t });
@@ -130,14 +194,18 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
     });
 
     // Fetch the full order with relations for the notification
-    const fullOrder = await Order.findByPk(newOrder.id, { include: orderIncludes() });
+    const fullOrder = await Order.findByPk(newOrder.id, { include: orderIncludes(req.user) });
 
     // Boutique + client (email / WhatsApp). L'échec d'un envoi ne casse pas la commande.
     whatsappService.sendOrderNotification(fullOrder).catch(err => console.error('[WhatsApp] send error', err));
-    orderNotify.notifyOrderCreated(fullOrder).catch(err => console.error('[Notify] send error', err));
+    const notified = await orderNotify.notifyOrderCreated(fullOrder).catch((err) => {
+      console.error('[Notify] send error', err);
+      return { email: false, whatsapp: false };
+    });
 
-    const payload = fullOrder.toJSON();
+    const payload = withParsedExtra(fullOrder);
     payload.tracking_url = trackingUrl(fullOrder.public_token);
+    payload.notified = notified;
     return res.status(201).json(payload);
   } catch (err) {
     return res.status(400).json({ message: err.message || 'Erreur lors de la création de la commande' });
@@ -203,11 +271,11 @@ router.put('/:id', auth, authorize('admin', 'seller'), async (req, res) => {
     });
 
     if (!updated) return res.status(404).json({ message: 'Order not found' });
-    const full = await Order.findByPk(updated.id, { include: orderIncludes() });
+    const full = await Order.findByPk(updated.id, { include: orderIncludes(req.user) });
     if (updated.statusChanged) {
       orderNotify.notifyOrderStatus(full).catch(err => console.error('[Notify] status error', err));
     }
-    res.json(full);
+    res.json(withParsedExtra(full));
   } catch (err) {
     return res.status(400).json({ message: err.message || 'Erreur lors de la mise à jour' });
   }
@@ -227,13 +295,13 @@ router.get('/', auth, async (req, res, next) => {
     const paginated = req.query.page !== undefined || req.query.limit !== undefined;
     const listOptions = {
       where,
-      include: orderIncludes(),
+      include: orderIncludes(req.user),
       order: [['createdAt', 'DESC']]
     };
 
     if (!paginated) {
       const orders = await Order.findAll(listOptions);
-      return res.json(orders);
+      return res.json(orders.map(withParsedExtra));
     }
 
     const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
@@ -245,7 +313,7 @@ router.get('/', auth, async (req, res, next) => {
       distinct: true
     });
     return res.json({
-      data: rows,
+      data: rows.map(withParsedExtra),
       total: count,
       page,
       limit,
@@ -314,7 +382,7 @@ router.get('/inbox', auth, authorize('admin', 'seller'), async (req, res, next) 
 // Get a single order – same access rules as list
 router.get('/:id', auth, async (req, res, next) => {
   try {
-    const order = await Order.findByPk(req.params.id, { include: orderIncludes() });
+    const order = await Order.findByPk(req.params.id, { include: orderIncludes(req.user) });
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (req.user.role === 'client' && order.user_id !== req.user.id) {
       return res.status(403).json({ message: 'Forbidden' });

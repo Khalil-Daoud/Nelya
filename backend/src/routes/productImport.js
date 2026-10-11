@@ -15,7 +15,9 @@ const router = express.Router();
 const MAX_ROWS = 2000;
 const MAX_ZIP_IMAGES = 80;
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
-const uploadDir = path.join(__dirname, '..', 'img');
+const { persistentImgDir, ensureImgDirs } = require('../config/imgPaths');
+ensureImgDirs();
+const uploadDir = persistentImgDir;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -36,6 +38,7 @@ const COLUMN_ALIASES = {
   name: ['designation', 'designationproduit', 'nom', 'nomproduit', 'libelle', 'produit', 'name'],
   contenance: ['contenance', 'volume', 'poids', 'format', 'taille'],
   price: ['prix', 'price', 'prixttc', 'prixvente', 'prixunitaire', 'pu'],
+  cost_price: ['prixachat', 'prixdachat', 'cout', 'cost', 'costprice', 'pa', 'prixrevient'],
   image: ['image', 'imageurl', 'urlimage', 'photo', 'lienimage'],
   stock: ['stock', 'quantite', 'qte', 'qty', 'quantity'],
   description: ['description', 'desc', 'details', 'detail']
@@ -217,6 +220,16 @@ router.post('/import', auth, authorize('admin', 'seller'), requirePermission('pr
             continue;
           }
 
+          const rawCost = cell(row, 'cost_price');
+          let costPrice = 0;
+          if (rawCost) {
+            costPrice = parsePrice(rawCost);
+            if (!Number.isFinite(costPrice) || costPrice < 0) {
+              errors.push({ line: lineNumber, message: `Prix d’achat invalide : "${rawCost}"` });
+              continue;
+            }
+          }
+
           const reference = cell(row, 'reference');
           const rawStock = cell(row, 'stock');
           const parsedStock = Number.parseInt(rawStock, 10);
@@ -227,6 +240,7 @@ router.post('/import', auth, authorize('admin', 'seller'), requirePermission('pr
             contenance: cell(row, 'contenance') || null,
             description: cell(row, 'description') || null,
             price,
+            cost_price: costPrice,
             image_url: normalizeImageUrl(cell(row, 'image'), packedImages),
             category: await resolveCategory(cell(row, 'category'), categoryCache, createdCategories)
           };

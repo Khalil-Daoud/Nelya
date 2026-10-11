@@ -16,7 +16,7 @@ import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } 
 import { ImageUrlPipe } from '../pipes/image-url.pipe';
 import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
 import { BreadcrumbComponent } from '../components/breadcrumb/breadcrumb.component';
-import { SettingsService } from '../services/settings.service';
+import { CheckoutField, SettingsService } from '../services/settings.service';
 
 export interface CheckoutDialogData {
   guest: boolean;
@@ -28,6 +28,7 @@ export interface OrderSuccessDialogData {
   pointsAwarded?: number;
   trackingUrl?: string;
   emailed?: boolean;
+  whatsappSent?: boolean;
 }
 
 @Component({
@@ -42,8 +43,11 @@ export interface OrderSuccessDialogData {
       <p class="points-won" *ngIf="data.pointsAwarded">
         Vous avez gagné <strong>{{ data.pointsAwarded }} point{{ data.pointsAwarded > 1 ? 's' : '' }}</strong> fidélité.
       </p>
+      <p class="mail-note" *ngIf="data.whatsappSent">
+        Le détail de votre commande vous a été envoyé sur WhatsApp.
+      </p>
       <p class="mail-note" *ngIf="data.emailed">
-        Un récapitulatif (numéro, détail et lien de suivi) part vers votre email.
+        Un récapitulatif part aussi vers votre email.
       </p>
       <p class="mail-note" *ngIf="data.trackingUrl">
         Votre commande est enregistrée en attente. Conservez le lien ci-dessous : le statut s’y met à jour.
@@ -54,13 +58,9 @@ export interface OrderSuccessDialogData {
       </a>
 
       <div *ngIf="data.whatsappLink" class="wa-invite">
-        <p>
-          Si vous avez WhatsApp, vous pouvez aussi nous envoyer le récapitulatif.
-          Ce n’est pas obligatoire : la commande est déjà enregistrée.
-        </p>
-        <a mat-raised-button class="wa-btn" [href]="data.whatsappLink" target="_blank" rel="noopener"
-           (click)="dialogRef.close(true)">
-          <mat-icon>chat</mat-icon> Envoyer sur WhatsApp
+        <p>Envoyez-nous le récapitulatif sur WhatsApp. Le message est déjà rédigé.</p>
+        <a mat-raised-button class="wa-btn" [href]="data.whatsappLink" target="_blank" rel="noopener">
+          <mat-icon>chat</mat-icon> Envoyer le récapitulatif à la boutique
         </a>
       </div>
 
@@ -100,32 +100,45 @@ export class OrderSuccessDialogComponent {
     <h2 mat-dialog-title class="luxury-title" style="margin-bottom: 20px; text-align: center; font-size: 2rem;">Valider la commande</h2>
     <mat-dialog-content>
       <form [formGroup]="checkoutForm" class="checkout-form">
-        <div *ngIf="data.guest" class="guest-block fade-in">
+        <div *ngIf="data.guest && hasGuestFields" class="guest-block fade-in">
           <p class="guest-note">
             <mat-icon>person_outline</mat-icon>
-            Vous commandez sans compte. L’email sert à vous envoyer le n° de commande et le lien de suivi.
+            Vous commandez sans compte.
           </p>
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Nom et prénom</mat-label>
-            <input matInput formControlName="guestName" placeholder="Ex: Flen Ben Foulen">
-          </mat-form-field>
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Email</mat-label>
-            <input matInput type="email" formControlName="guestEmail" placeholder="Ex: client@email.com">
-            <mat-error *ngIf="checkoutForm.get('guestEmail')?.hasError('required')">Obligatoire pour le suivi</mat-error>
-            <mat-error *ngIf="checkoutForm.get('guestEmail')?.hasError('email')">Email invalide</mat-error>
-          </mat-form-field>
+          <ng-container *ngFor="let field of guestFields">
+            <ng-container *ngTemplateOutlet="fieldTpl; context: { $implicit: field }"></ng-container>
+          </ng-container>
         </div>
 
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Adresse de livraison complète</mat-label>
-          <textarea matInput formControlName="address" rows="3" placeholder="Ex: 123 Avenue Habib Bourguiba, Tunis"></textarea>
-        </mat-form-field>
-        
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Numéro de téléphone</mat-label>
-          <input matInput formControlName="phone" placeholder="Ex: +216 20 000 000">
-        </mat-form-field>
+        <ng-container *ngFor="let field of sharedFields">
+          <ng-container *ngTemplateOutlet="fieldTpl; context: { $implicit: field }"></ng-container>
+        </ng-container>
+
+        <ng-template #fieldTpl let-field>
+          <mat-form-field *ngIf="field.id === 'phone'" appearance="outline" class="full-width">
+            <mat-label>{{ field.label }}</mat-label>
+            <span matPrefix class="phone-prefix">+216</span>
+            <input matInput formControlName="phoneLocal" inputmode="numeric" maxlength="8"
+              placeholder="20 000 000" autocomplete="tel-national"
+              (input)="onPhoneInput($event)">
+            <mat-error *ngIf="checkoutForm.get('phoneLocal')?.hasError('required')">Obligatoire</mat-error>
+            <mat-error *ngIf="checkoutForm.get('phoneLocal')?.hasError('pattern')">8 chiffres, sans le 0</mat-error>
+          </mat-form-field>
+
+          <mat-form-field *ngIf="field.id !== 'phone' && field.type === 'textarea'" appearance="outline" class="full-width">
+            <mat-label>{{ field.label }}</mat-label>
+            <textarea matInput [formControlName]="controlName(field)" rows="3"></textarea>
+            <mat-error *ngIf="checkoutForm.get(controlName(field))?.hasError('required')">Obligatoire</mat-error>
+          </mat-form-field>
+
+          <mat-form-field *ngIf="field.id !== 'phone' && field.type !== 'textarea'" appearance="outline" class="full-width">
+            <mat-label>{{ field.label }}</mat-label>
+            <input matInput [type]="field.type === 'email' ? 'email' : (field.type === 'tel' ? 'tel' : 'text')"
+              [formControlName]="controlName(field)">
+            <mat-error *ngIf="checkoutForm.get(controlName(field))?.hasError('required')">Obligatoire</mat-error>
+            <mat-error *ngIf="checkoutForm.get(controlName(field))?.hasError('email')">Email invalide</mat-error>
+          </mat-form-field>
+        </ng-template>
 
         <p class="pay-note">
           <mat-icon>local_shipping</mat-icon>
@@ -147,29 +160,75 @@ export class OrderSuccessDialogComponent {
     .guest-block { background: var(--luxe-offwhite); padding: 20px 20px 5px 20px; border-radius: var(--radius-md); margin-bottom: 20px; border: 1px solid var(--luxe-border); }
     .guest-note { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; font-size: 0.85rem; font-weight: 300; color: var(--luxe-text-muted); line-height: 1.5; }
     .guest-note mat-icon { font-size: 20px; width: 20px; height: 20px; color: var(--luxe-gold); flex-shrink: 0; }
+    .phone-prefix { font-weight: 600; letter-spacing: 0.5px; padding-left: 4px; color: var(--luxe-black); }
     @media (max-width: 600px) { .checkout-form { min-width: 100%; } }
   `]
 })
 export class CheckoutDialogComponent {
   checkoutForm: FormGroup;
+  visibleFields: CheckoutField[] = [];
 
   constructor(
     private fb: FormBuilder,
     public dialogRef: MatDialogRef<CheckoutDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: CheckoutDialogData
+    @Inject(MAT_DIALOG_DATA) public data: CheckoutDialogData,
+    private settings: SettingsService
   ) {
-    this.checkoutForm = this.fb.group({
-      guestName: ['', data.guest ? [Validators.required] : []],
-      guestEmail: ['', data.guest ? [Validators.required, Validators.email] : [Validators.email]],
-      address: ['', Validators.required],
-      phone: ['', Validators.required]
+    this.visibleFields = this.settings.checkoutFields.filter((field) => {
+      if (!field.enabled) return false;
+      if (field.guestOnly && !data.guest) return false;
+      return true;
     });
+    const group: Record<string, any> = {};
+    for (const field of this.visibleFields) {
+      const name = this.controlName(field);
+      const validators = [];
+      if (field.required) validators.push(Validators.required);
+      if (field.id === 'phone') validators.push(Validators.pattern(/^[2-9]\d{7}$/));
+      if (field.type === 'email' || field.id === 'guestEmail') validators.push(Validators.email);
+      group[name] = ['', validators];
+    }
+    this.checkoutForm = this.fb.group(group);
+  }
+
+  get guestFields(): CheckoutField[] {
+    return this.visibleFields.filter((f) => f.guestOnly);
+  }
+
+  get sharedFields(): CheckoutField[] {
+    return this.visibleFields.filter((f) => !f.guestOnly);
+  }
+
+  get hasGuestFields(): boolean {
+    return this.guestFields.length > 0;
+  }
+
+  controlName(field: CheckoutField): string {
+    return field.id === 'phone' ? 'phoneLocal' : field.id;
+  }
+
+  onPhoneInput(event: Event) {
+    const el = event.target as HTMLInputElement;
+    const digits = el.value.replace(/\D/g, '').slice(0, 8);
+    this.checkoutForm.get('phoneLocal')?.setValue(digits, { emitEvent: false });
   }
 
   submit() {
-    if (this.checkoutForm.valid) {
-      this.dialogRef.close(this.checkoutForm.value);
-    }
+    if (this.checkoutForm.invalid) return;
+    const value = this.checkoutForm.value;
+    const local = String(value.phoneLocal || '').replace(/\D/g, '');
+    const extra = this.visibleFields
+      .filter((f) => !f.builtin)
+      .map((f) => ({ id: f.id, label: f.label, value: String(value[f.id] || '').trim() }))
+      .filter((row) => row.value);
+    this.dialogRef.close({
+      guestName: value.guestName,
+      guestEmail: value.guestEmail,
+      address: value.address,
+      notes: value.notes,
+      extra,
+      phone: local ? `+216${local}` : ''
+    });
   }
 }
 
@@ -336,38 +395,6 @@ export class CartComponent implements OnInit {
     });
   }
 
-  /**
-   * Message WhatsApp pré-rempli que le client envoie lui-même à la boutique.
-   * Rien à construire si le serveur confirme déjà la commande automatiquement.
-   */
-  private buildWhatsAppLink(order: any, form: any, isGuest: boolean): string {
-    const wa = this.settings.whatsapp;
-    if (!wa.number || !wa.invite || wa.autoSend) return '';
-
-    const symbol = this.settings.currency.symbol;
-    const amount = (value: any) =>
-      `${Number(value).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${symbol}`;
-
-    const name = isGuest
-      ? form.guestName
-      : `${this.currentUser?.first_name || ''} ${this.currentUser?.last_name || ''}`.trim();
-
-    const lines = [
-      `Bonjour Nelya, je viens de passer la commande #${String(order?.id || '').slice(0, 8)}.`,
-      '',
-      `Nom : ${name}`,
-      `Téléphone : ${form.phone}`,
-      `Adresse : ${form.address}`,
-      '',
-      'Articles :',
-      ...this.items.map(i => `- ${i.name} x${i.quantity} — ${amount(i.price * i.quantity)}`),
-      '',
-      `Total : ${amount(this.total)}`
-    ];
-
-    return `https://wa.me/${wa.number}?text=${encodeURIComponent(lines.join('\n'))}`;
-  }
-
   increase(item: CartItem) {
     this.cartService.addToCart(item);
   }
@@ -404,9 +431,10 @@ export class CartComponent implements OnInit {
         // [SEC-FIX] Le montant est calculé côté serveur. On n'envoie que les items.
         const orderPayload: any = {
           items: this.items.map(i => ({ product_id: i.id, quantity: i.quantity })),
-          shipping_address: result.address,
-          phone: result.phone,
-          notes: `Téléphone: ${result.phone} | Paiement: Espèces à la livraison`
+          shipping_address: result.address || '',
+          phone: result.phone || '',
+          notes: result.notes || '',
+          extra_fields: result.extra || []
         };
 
         if (isGuest) {
@@ -422,17 +450,18 @@ export class CartComponent implements OnInit {
             } else if (pointsAwarded > 0) {
               this.authService.refreshMe();
             }
-            const whatsappLink = this.buildWhatsAppLink(order, result, isGuest);
+            const whatsappSent = Boolean(order?.notified?.whatsapp);
             const trackingUrl = order?.tracking_url || (order?.public_token ? `/commande/${order.public_token}` : '');
             this.cartService.clearCart();
             this.dialog
               .open(OrderSuccessDialogComponent, {
                 panelClass: 'luxury-dialog',
                 data: {
-                  whatsappLink,
+                  whatsappLink: this.buildShopRecapLink(order, result, isGuest),
+                  whatsappSent,
                   pointsAwarded,
                   trackingUrl,
-                  emailed: isGuest && Boolean(result.guestEmail)
+                  emailed: Boolean(order?.notified?.email) || (isGuest && Boolean(result.guestEmail))
                 }
               })
               .afterClosed()
@@ -454,5 +483,42 @@ export class CartComponent implements OnInit {
         });
       }
     });
+  }
+
+  private buildShopRecapLink(order: any, result: any, isGuest: boolean): string {
+    const wa = this.settings.whatsapp;
+    if (!wa.invite || !wa.number) return '';
+    const digits = String(wa.number).replace(/\D/g, '');
+    if (!digits) return '';
+
+    const symbol = this.settings.currency?.symbol || '€';
+    const money = (value: number) =>
+      `${Number(value).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${symbol}`;
+    const ref = `#${String(order?.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const name = isGuest
+      ? String(result?.guestName || '').trim()
+      : `${this.currentUser?.first_name || ''} ${this.currentUser?.last_name || ''}`.trim();
+    const itemLines = (order?.items?.length ? order.items : this.items).map((item: any) => {
+      const label = item.Product?.name || item.name || 'Produit';
+      const qty = Number(item.quantity) || 1;
+      const unit = Number(item.unit_price ?? item.price) || 0;
+      return `• ${label} × ${qty} — ${money(unit * qty)}`;
+    });
+
+    const lines = [
+      'Bonjour Nelya,',
+      '',
+      `Nouvelle commande ${ref}`
+    ];
+    if (name) lines.push(`Client : ${name}`);
+    if (result?.phone) lines.push(`Téléphone : ${result.phone}`);
+    if (result?.address) lines.push(`Adresse : ${result.address}`);
+    (result?.extra || []).forEach((row: { label?: string; value?: string }) => {
+      if (row?.label && row?.value) lines.push(`${row.label} : ${row.value}`);
+    });
+    if (result?.notes) lines.push(`Remarque : ${result.notes}`);
+    lines.push('', 'Articles :', ...itemLines, '', `Total : ${money(Number(order?.total_amount) || this.total)}`);
+
+    return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
   }
 }

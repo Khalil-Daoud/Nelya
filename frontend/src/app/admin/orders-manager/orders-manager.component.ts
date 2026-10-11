@@ -14,6 +14,7 @@ import { FormsModule } from '@angular/forms';
 import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
 import { PaginationComponent } from '../../components/pagination/pagination.component';
 import { AuthService } from '../../services/auth.service';
+import { SettingsService } from '../../services/settings.service';
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
 
@@ -33,7 +34,7 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     <div class="manager-container fade-in">
       <div class="header">
         <h2 class="luxury-title">Gestion des Commandes</h2>
-        <p>Changez le statut dans le tableau. L’annulation est disponible ici et dans le détail. Les permissions dépendent du groupe.</p>
+        <p>Changez le statut dans le tableau. Le bouton WhatsApp ouvre une conversation avec le client, message d’état déjà rédigé. L’annulation est ici et dans le détail.</p>
       </div>
 
       <div class="toolbar">
@@ -100,6 +101,13 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
             <th mat-header-cell *matHeaderCellDef> </th>
             <td mat-cell *matCellDef="let order" class="actions-cell">
               <button
+                mat-icon-button
+                class="wa-icon-btn"
+                matTooltip="Envoyer le statut sur WhatsApp"
+                (click)="openCustomerWhatsApp(order, $event)">
+                <mat-icon>chat</mat-icon>
+              </button>
+              <button
                 *ngIf="canCancel && order.status !== 'cancelled'"
                 mat-icon-button
                 color="warn"
@@ -126,6 +134,7 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
                     <h4>Livraison</h4>
                     <p><strong>Adresse :</strong> {{order.shipping_address || '—'}}</p>
                     <p><strong>Téléphone :</strong> {{getPhone(order)}}</p>
+                    <p *ngFor="let extra of extraFields(order)"><strong>{{ extra.label }} :</strong> {{ extra.value }}</p>
                     <p><strong>Paiement :</strong> {{getPayment(order)}}</p>
                   </div>
                   <div class="detail-block">
@@ -137,6 +146,12 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
                   <div class="detail-block">
                     <h4>Statut</h4>
                     <p class="status-readonly">{{ translateStatus(order.status) }}</p>
+                    <button
+                      mat-raised-button
+                      class="wa-status-btn"
+                      (click)="openCustomerWhatsApp(order, $event)">
+                      <mat-icon>chat</mat-icon> Envoyer le statut sur WhatsApp
+                    </button>
                     <button
                       *ngIf="canCancel && order.status !== 'cancelled'"
                       mat-stroked-button
@@ -155,6 +170,8 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
                       <th>Produit</th>
                       <th>Qté</th>
                       <th>PU</th>
+                      <th>Achat</th>
+                      <th>Marge</th>
                       <th>Sous-total</th>
                     </tr>
                   </thead>
@@ -163,16 +180,22 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
                       <td>{{item.Product?.name || 'Produit inconnu'}}</td>
                       <td>{{item.quantity}}</td>
                       <td>{{item.unit_price | formatCurrency}}</td>
+                      <td>{{(item.cost_price || item.Product?.cost_price || 0) | formatCurrency}}</td>
+                      <td>{{ lineMargin(item) | formatCurrency }}</td>
                       <td>{{(item.unit_price * item.quantity) | formatCurrency}}</td>
                     </tr>
                     <tr *ngIf="!order.items || order.items.length === 0">
-                      <td colspan="4" class="empty-cell">Aucun article enregistré pour cette commande.</td>
+                      <td colspan="6" class="empty-cell">Aucun article enregistré pour cette commande.</td>
                     </tr>
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colspan="3" class="total-label">TOTAL</td>
+                      <td colspan="5" class="total-label">TOTAL</td>
                       <td class="total-value">{{order.total_amount | formatCurrency}}</td>
+                    </tr>
+                    <tr>
+                      <td colspan="5" class="total-label">PROFIT</td>
+                      <td class="total-value profit">{{ orderProfit(order) | formatCurrency }}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -232,6 +255,8 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     .status-select-table.shipped { color: #2e7d32; }
     .status-select-table.delivered { color: #7b1fa2; }
     .actions-cell { white-space: nowrap; }
+    .wa-icon-btn { color: #25D366; }
+    .wa-status-btn { background: #25D366 !important; color: #fff !important; margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; }
 
     .detail-row td.mat-cell { padding: 0; border: none; }
     .detail-panel { background: var(--luxe-offwhite); padding: 30px; border-top: 1px solid var(--luxe-border); }
@@ -249,6 +274,7 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
     .items-table tfoot td { font-weight: 700; color: var(--luxe-black); border-bottom: none; }
     .items-table .total-label { text-align: right; }
     .items-table .total-value { font-size: 1rem; }
+    .items-table .total-value.profit { color: #067647; }
     .empty-cell { text-align: center; color: var(--luxe-text-muted); font-style: italic; }
 
     .detail-notes { margin-top: 20px; }
@@ -275,7 +301,12 @@ export class OrdersManagerComponent implements OnInit {
   pageIndex = 0;
   pageSize = 8;
 
-  constructor(private crud: CrudService, private snackBar: MatSnackBar, private auth: AuthService) {}
+  constructor(
+    private crud: CrudService,
+    private snackBar: MatSnackBar,
+    private auth: AuthService,
+    private settings: SettingsService
+  ) {}
 
   get canUpdateStatus(): boolean {
     return this.auth.hasPermission('orders.update_status');
@@ -347,6 +378,31 @@ export class OrdersManagerComponent implements OnInit {
     return order.notes?.match(/Téléphone: ([^|]+)/)?.[1]?.trim() || '—';
   }
 
+  lineMargin(item: any): number {
+    const sale = Number(item?.unit_price) || 0;
+    const cost = Number(item?.cost_price ?? item?.Product?.cost_price) || 0;
+    const qty = Number(item?.quantity) || 0;
+    return (sale - cost) * qty;
+  }
+
+  orderProfit(order: any): number {
+    return (order?.items || []).reduce((sum: number, item: any) => sum + this.lineMargin(item), 0);
+  }
+
+  extraFields(order: any): Array<{ label: string; value: string }> {
+    const raw = order?.extra_fields;
+    if (Array.isArray(raw)) return raw.filter((row) => row?.label && row?.value);
+    if (typeof raw === 'string' && raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter((row) => row?.label && row?.value) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }
+
   getPayment(order: any): string {
     return order.notes?.match(/Paiement: ([^|]+)/)?.[1]?.trim() || '—';
   }
@@ -377,5 +433,46 @@ export class OrdersManagerComponent implements OnInit {
     if (order.status === 'cancelled') return;
     if (!confirm(`Annuler la commande #${String(order.id).slice(0, 8)} ? Le stock sera remis en rayon.`)) return;
     this.updateStatus(order, 'cancelled');
+  }
+
+  customerWhatsAppDigits(order: any): string {
+    const raw = this.getPhone(order);
+    if (!raw || raw === '—') return '';
+    let digits = String(raw).replace(/\D/g, '');
+    if (digits.length === 8) digits = `216${digits}`;
+    return digits;
+  }
+
+  openCustomerWhatsApp(order: any, event?: Event) {
+    event?.stopPropagation();
+    const digits = this.customerWhatsAppDigits(order);
+    if (!digits) {
+      this.snackBar.open('Pas de numéro WhatsApp sur cette commande', 'Fermer', { duration: 4000 });
+      return;
+    }
+
+    const firstName = String(this.customerName(order) || '')
+      .replace(/\s*\(invité\)\s*/i, '')
+      .trim()
+      .split(/\s+/)[0];
+    const ref = `#${String(order.id || '').replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const symbol = this.settings.currency?.symbol || '€';
+    const total = Number(order.total_amount).toLocaleString('fr-FR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    const tracking = order.public_token
+      ? `\nSuivi : ${window.location.origin}/commande/${order.public_token}`
+      : '';
+    const text = [
+      `Bonjour${firstName ? ` ${firstName}` : ''},`,
+      '',
+      `Votre commande ${ref} est actuellement : ${this.translateStatus(order.status)}.`,
+      `Total : ${total} ${symbol}.${tracking}`,
+      '',
+      'Nelya'
+    ].join('\n');
+
+    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
   }
 }

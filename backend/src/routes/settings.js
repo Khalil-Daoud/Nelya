@@ -16,9 +16,19 @@ router.get('/', async (req, res) => {
 router.get('/access', auth, authorize('admin'), async (req, res) => {
   try {
     const groups = await permissionService.getPermissionGroups();
-    res.json(permissionService.accessPayload(groups));
+    const whatsappGateway = await settingsService.getWhatsAppGatewayForAdmin();
+    res.json({ ...permissionService.accessPayload(groups), whatsappGateway });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/whatsapp-test', auth, authorize('admin'), async (req, res) => {
+  try {
+    const whatsappService = require('../services/whatsappService');
+    res.json(await whatsappService.sendTestTo(req.body.phone));
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 });
 
@@ -40,8 +50,21 @@ router.put('/', auth, authorize('admin'), async (req, res) => {
     if (req.body.whatsappInvite !== undefined) {
       await settingsService.setWhatsAppInvite(req.body.whatsappInvite === true || req.body.whatsappInvite === 'true');
     }
+    if (req.body.callmebotKey !== undefined || req.body.ultramsgInstance !== undefined || req.body.ultramsgToken !== undefined) {
+      await settingsService.setWhatsAppGateway({
+        callmebotKey: req.body.callmebotKey,
+        ultramsgInstance: req.body.ultramsgInstance,
+        ultramsgToken: req.body.ultramsgToken
+      });
+    }
     if (req.body.loyaltyTiers !== undefined) {
       await settingsService.setLoyaltyTiers(req.body.loyaltyTiers);
+    }
+    if (req.body.checkoutFields !== undefined) {
+      await settingsService.setCheckoutFields(req.body.checkoutFields);
+    }
+    if (req.body.heroImage !== undefined) {
+      await settingsService.setHeroImage(req.body.heroImage);
     }
     if (req.body.permissionGroups !== undefined) {
       const groups = await permissionService.setPermissionGroups(req.body.permissionGroups);

@@ -24,6 +24,11 @@ const OrderItem = sequelize.define('OrderItem', {
   unit_price: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false
+  },
+  cost_price: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    defaultValue: 0
   }
 }, {
   timestamps: true,

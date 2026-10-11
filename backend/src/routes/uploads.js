@@ -7,10 +7,9 @@ const { auth, authorize } = require('../middlewares/auth');
 
 const router = express.Router();
 
-const uploadDir = path.join(__dirname, '..', 'img');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+const { persistentImgDir, ensureImgDirs } = require('../config/imgPaths');
+ensureImgDirs();
+const uploadDir = persistentImgDir;
 
 // Formats acceptés en entrée. La sortie est toujours du WebP.
 const ALLOWED_INPUT_FORMATS = ['jpeg', 'png', 'webp', 'gif', 'avif', 'tiff'];
@@ -34,7 +33,7 @@ const upload = multer({
  * sharp refuse tout ce qui n'est pas une image réelle : c'est une validation du
  * contenu, là où l'extension du nom de fichier ne prouvait rien.
  */
-async function compressToWebp(buffer) {
+async function compressToWebp(buffer, { maxWidth = MAX_WIDTH, maxHeight = MAX_HEIGHT } = {}) {
   const image = sharp(buffer, { animated: true, failOn: 'error' });
   const metadata = await image.metadata();
 
@@ -45,8 +44,8 @@ async function compressToWebp(buffer) {
   const output = await image
     .rotate() // applique l'orientation EXIF avant de perdre les métadonnées
     .resize({
-      width: MAX_WIDTH,
-      height: MAX_HEIGHT,
+      width: maxWidth,
+      height: maxHeight,
       fit: 'inside',
       withoutEnlargement: true // ne jamais étirer une petite image
     })
@@ -70,8 +69,13 @@ router.post('/', auth, authorize('admin', 'seller'), (req, res, next) => {
     }
 
     try {
-      const { buffer, info, source } = await compressToWebp(req.file.buffer);
-      const filename = `product_${Date.now()}_${Math.round(Math.random() * 1e9)}.webp`;
+      const purpose = String(req.body?.purpose || '').toLowerCase();
+      const isHero = purpose === 'hero';
+      const { buffer, info, source } = await compressToWebp(req.file.buffer, {
+        maxWidth: isHero ? 2000 : MAX_WIDTH,
+        maxHeight: isHero ? 1400 : MAX_HEIGHT
+      });
+      const filename = `${isHero ? 'hero' : 'product'}_${Date.now()}_${Math.round(Math.random() * 1e9)}.webp`;
 
       await fs.promises.writeFile(path.join(uploadDir, filename), buffer);
 

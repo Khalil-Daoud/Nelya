@@ -94,8 +94,12 @@ async function sendMail(to, subject, bodies) {
   }
 }
 
+function customerEmail(order) {
+  return String(order.guest_email || order.User?.email || '').trim();
+}
+
 async function sendOrderCreated(order, url) {
-  const to = String(order.guest_email || '').trim();
+  const to = customerEmail(order);
   if (!to) return false;
   const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: 'DT' }));
   const name = customerFirstName(order);
@@ -114,7 +118,7 @@ async function sendOrderCreated(order, url) {
 }
 
 async function sendOrderStatus(order, url) {
-  const to = String(order.guest_email || '').trim();
+  const to = customerEmail(order);
   if (!to) return false;
   const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: 'DT' }));
   const name = customerFirstName(order);

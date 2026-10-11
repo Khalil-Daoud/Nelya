@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { CrudService } from '../services/crud.service';
+import { SettingsService, DEFAULT_HERO_IMAGE } from '../services/settings.service';
 import { CategoryCount } from '../services/catalog.types';
 import { ProductCardComponent } from '../components/product-card/product-card.component';
 import { ImageUrlPipe } from '../pipes/image-url.pipe';
@@ -18,7 +19,7 @@ import { ImageUrlPipe } from '../pipes/image-url.pipe';
       <!-- HERO -->
       <section class="luxe-hero">
         <div class="luxe-hero-media">
-          <img src="https://images.unsplash.com/photo-1612817288484-6f916006741a?auto=format&fit=crop&q=80&w=2000" alt="Cosmétiques naturels Nelya">
+          <img [src]="heroImage | imageUrl" alt="Cosmétiques naturels Nelya">
         </div>
         <div class="luxe-hero-overlay"></div>
         <div class="luxe-hero-content">
@@ -259,10 +260,18 @@ import { ImageUrlPipe } from '../pipes/image-url.pipe';
 export class HomeComponent implements OnInit {
   products: any[] = [];
   categories: any[] = [];
+  heroImage = DEFAULT_HERO_IMAGE;
 
-  constructor(private crud: CrudService, private snackBar: MatSnackBar) {}
+  constructor(
+    private crud: CrudService,
+    private snackBar: MatSnackBar,
+    private settings: SettingsService
+  ) {}
 
   ngOnInit() {
+    this.heroImage = this.settings.heroImage;
+    this.settings.heroImage$.subscribe((url) => { this.heroImage = url; });
+
     // Huit produits, pas le catalogue : la page d'accueil n'en affiche pas plus.
     this.crud.getPage<any>('products', { limit: 8, sort: 'newest:desc' }).subscribe({
       next: page => { this.products = page.data; },

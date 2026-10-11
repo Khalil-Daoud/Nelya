@@ -23,6 +23,7 @@ interface TrackedOrder {
   total_amount: number;
   shipping_address: string;
   phone: string;
+  extra_fields?: Array<{ label: string; value: string }>;
   guest_name: string;
   items: TrackedItem[];
 }
@@ -96,6 +97,7 @@ const STEPS = [
             <p *ngIf="order.guest_name"><mat-icon>person_outline</mat-icon> {{ order.guest_name }}</p>
             <p *ngIf="order.phone"><mat-icon>phone_in_talk</mat-icon> {{ order.phone }}</p>
             <p *ngIf="order.shipping_address"><mat-icon>location_on</mat-icon> {{ order.shipping_address }}</p>
+            <p *ngFor="let extra of (order.extra_fields || [])"><mat-icon>notes</mat-icon> {{ extra.label }} : {{ extra.value }}</p>
             <p class="pay"><mat-icon>local_shipping</mat-icon> Paiement en espèces à la livraison</p>
           </section>
 

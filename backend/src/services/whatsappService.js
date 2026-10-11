@@ -1,6 +1,6 @@
 const fetch = global.fetch || require('node-fetch');
 const settingsService = require('./settingsService');
-const { orderReference, customerFirstName, statusLabel } = require('../utils/orderPublic');
+const { orderReference, customerFirstName, statusLabel, parseExtraFields } = require('../utils/orderPublic');
 
 /**
  * Notifications WhatsApp liées aux commandes.
@@ -33,6 +33,9 @@ class WhatsAppService {
     lines.push(`*Client*: ${this.customerName(order)}`);
     lines.push(`*Téléphone*: ${order.phone || order.notes?.match(/Téléphone: ([^|]+)/)?.[1] || ''}`);
     lines.push(`*Adresse*: ${order.shipping_address || ''}`);
+    parseExtraFields(order.extra_fields).forEach((row) => {
+      if (row?.label && row?.value) lines.push(`*${row.label}*: ${row.value}`);
+    });
     lines.push(`*Total*: ${order.total_amount} ${symbol}`);
     lines.push('\n*Articles:*');
     order.items?.forEach(item => {
@@ -42,22 +45,29 @@ class WhatsAppService {
     return lines.join('\n');
   }
 
-  /** Confirmation courte destinée au client */
+  /** Récapitulatif complet envoyé au client depuis le numéro boutique */
   formatCustomerMessage(order, symbol = '€', trackingLink = '') {
     const name = customerFirstName(order);
     const lines = [
-      `Bonjour ${name || ''}`.trim() + ',',
+      `Bonjour${name ? ` ${name}` : ''},`,
       `Votre commande Nelya ${this.orderReference(order)} est bien enregistrée.`,
-      `Montant : ${order.total_amount} ${symbol}.`
+      '',
+      '*Articles :*'
     ];
     (order.items || []).forEach((item) => {
       const productName = item.Product?.name || 'Produit';
-      lines.push(`- ${productName} x${item.quantity}`);
+      lines.push(`- ${productName} x${item.quantity} — ${item.unit_price} ${symbol}`);
     });
+    lines.push('', `*Total :* ${order.total_amount} ${symbol}`);
+    if (order.shipping_address) lines.push(`*Livraison :* ${order.shipping_address}`);
+    parseExtraFields(order.extra_fields).forEach((row) => {
+      if (row?.label && row?.value) lines.push(`*${row.label} :* ${row.value}`);
+    });
+    lines.push('*Paiement :* espèces à la livraison');
     if (trackingLink) {
       lines.push('', `Suivre la commande : ${trackingLink}`);
     }
-    lines.push('', 'Nous vous contactons très vite pour la livraison. Merci de votre confiance !');
+    lines.push('', 'Nous vous contactons très vite. Merci de votre confiance !');
     return lines.join('\n');
   }
 
@@ -68,6 +78,83 @@ class WhatsAppService {
       `Votre commande Nelya ${this.orderReference(order)} est maintenant : ${statusLabel(order.status)}.`,
       trackingLink ? `Détails : ${trackingLink}` : ''
     ].filter(Boolean).join('\n');
+  }
+
+  async sendViaCallMeBot(toNumber, message) {
+    const apikey = await settingsService.getCallMeBotKey();
+    if (!apikey || !toNumber) return false;
+    const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(`+${toNumber}`)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(apikey)}`;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`CallMeBot responded ${res.status}`);
+      return true;
+    } catch (e) {
+      console.error('[WhatsApp] CallMeBot error:', e.message);
+      return false;
+    }
+  }
+
+  async sendViaCloudApiText(to, message) {
+    const token = process.env.WHATSAPP_CLOUD_TOKEN;
+    const phoneId = process.env.WHATSAPP_CLOUD_PHONE_ID;
+    if (!token || !phoneId || !to) return false;
+    try {
+      const res = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to,
+          type: 'text',
+          text: { preview_url: true, body: message }
+        })
+      });
+      if (!res.ok) throw new Error(`Cloud API ${res.status}: ${await res.text()}`);
+      return true;
+    } catch (e) {
+      console.error('[WhatsApp] Cloud API texte :', e.message);
+      return false;
+    }
+  }
+
+  async sendViaUltramsg(toNumber, message) {
+    const { instance, token } = await settingsService.getUltramsgConfig();
+    if (!instance || !token || !toNumber) return false;
+    try {
+      const res = await fetch(`https://api.ultramsg.com/${instance}/messages/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          token,
+          to: `+${toNumber}`,
+          body: message
+        })
+      });
+      if (!res.ok) throw new Error(`UltraMsg ${res.status}: ${await res.text()}`);
+      return true;
+    } catch (e) {
+      console.error('[WhatsApp] UltraMsg :', e.message);
+      return false;
+    }
+  }
+
+  async sendViaWebhook(toNumber, message) {
+    if (!process.env.WHATSAPP_WEBHOOK_URL || !toNumber) return false;
+    try {
+      const res = await fetch(process.env.WHATSAPP_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: `+${toNumber}`, message })
+      });
+      if (!res.ok) throw new Error(`Webhook responded ${res.status}`);
+      return true;
+    } catch (e) {
+      console.error('[WhatsApp] Webhook error:', e.message);
+      return false;
+    }
   }
 
   /** Envoi d'un texte libre via Twilio – renvoie true si l'envoi a réussi */
@@ -142,17 +229,9 @@ class WhatsAppService {
     const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
     const message = this.formatMessage(order, symbol);
 
-    // CallMeBot : gratuit, mais n'écrit qu'aux numéros ayant activé le bot.
-    if (process.env.CALLMEBOT_API_KEY) {
-      const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(`+${toNumber}`)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(process.env.CALLMEBOT_API_KEY)}`;
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`CallMeBot responded ${res.status}`);
-        console.log('[WhatsApp] Notification boutique envoyée via CallMeBot');
-        return;
-      } catch (e) {
-        console.error('[WhatsApp] CallMeBot error:', e.message);
-      }
+    if (await this.sendViaCallMeBot(toNumber, message)) {
+      console.log('[WhatsApp] Notification boutique envoyée via CallMeBot');
+      return;
     }
 
     if (await this.sendViaTwilio(toNumber, message)) {
@@ -160,19 +239,9 @@ class WhatsAppService {
       return;
     }
 
-    if (process.env.WHATSAPP_WEBHOOK_URL) {
-      try {
-        const res = await fetch(process.env.WHATSAPP_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: `+${toNumber}`, message })
-        });
-        if (!res.ok) throw new Error(`Webhook responded ${res.status}`);
-        console.log('[WhatsApp] Notification boutique envoyée via webhook');
-        return;
-      } catch (e) {
-        console.error('[WhatsApp] Webhook error:', e.message);
-      }
+    if (await this.sendViaWebhook(toNumber, message)) {
+      console.log('[WhatsApp] Notification boutique envoyée via webhook');
+      return;
     }
 
     console.log('---[WhatsApp Notification]---');
@@ -182,9 +251,9 @@ class WhatsAppService {
   }
 
   /**
-   * Confirme la commande au client. Ne fait rien tant que l'admin n'a pas activé
-   * l'option et qu'aucun fournisseur officiel n'est configuré : dans ce cas le
-   * client enverra lui-même le récapitulatif depuis le site.
+   * Envoie le récapitulatif au numéro saisi au checkout, depuis le compte boutique
+   * (Cloud API / Twilio / UltraMsg). Le numéro boutique en Paramètres n’est pas
+   * un mot de passe WhatsApp : sans API, aucun message ne part.
    */
   async sendToCustomer(order, message, templateParams) {
     const to = settingsService.normalizeWhatsAppNumber(order.phone);
@@ -193,23 +262,56 @@ class WhatsAppService {
       return false;
     }
 
+    if (await this.sendViaCloudApiText(to, message)) {
+      console.log('[WhatsApp] Récap client envoyé via Cloud API (texte) →', to);
+      return true;
+    }
+
     if (await this.sendTemplateViaCloudApi(to, templateParams)) {
-      console.log('[WhatsApp] Message client envoyé via Cloud API');
+      console.log('[WhatsApp] Récap client envoyé via Cloud API (modèle) →', to);
       return true;
     }
 
     if (await this.sendViaTwilio(to, message)) {
-      console.log('[WhatsApp] Message client envoyé via Twilio');
+      console.log('[WhatsApp] Récap client envoyé via Twilio →', to);
+      return true;
+    }
+
+    if (await this.sendViaUltramsg(to, message)) {
+      console.log('[WhatsApp] Récap client envoyé via UltraMsg →', to);
+      return true;
+    }
+
+    if (await this.sendViaWebhook(to, message)) {
+      console.log('[WhatsApp] Récap client envoyé via webhook →', to);
+      return true;
+    }
+
+    if (await this.sendViaCallMeBot(to, message)) {
+      console.log('[WhatsApp] Récap client envoyé via CallMeBot →', to);
       return true;
     }
 
     return false;
   }
 
+  async sendTestTo(phoneRaw) {
+    const to = settingsService.normalizeWhatsAppNumber(phoneRaw);
+    if (!to) throw new Error('Numéro de test invalide.');
+    const sent = await this.sendToCustomer(
+      { phone: `+${to}`, id: 'test', items: [], total_amount: '0' },
+      'Test Nelya : le récapitulatif WhatsApp fonctionne. Les prochaines commandes partiront sur ce numéro si la clé API correspond.',
+      ['test', 'TEST', '0']
+    );
+    if (!sent) {
+      throw new Error('Aucun message envoyé. Vérifiez la clé CallMeBot (le numéro testé doit être celui qui a reçu la clé) ou UltraMsg.');
+    }
+    return { sent: true, to: `+${to}` };
+  }
+
   async sendCustomerConfirmation(order, trackingLink = '') {
-    const invite = await settingsService.getWhatsAppInvite();
     const enabled = await settingsService.getNotifyCustomer();
-    if (!invite || !enabled || !settingsService.isCustomerProviderConfigured()) return false;
+    if (!enabled) return false;
 
     const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
     const firstName = customerFirstName(order);
@@ -230,10 +332,8 @@ class WhatsAppService {
   }
 
   async sendCustomerStatus(order, trackingLink = '') {
-    if (!settingsService.isCustomerProviderConfigured()) return false;
-    const invite = await settingsService.getWhatsAppInvite();
     const enabled = await settingsService.getNotifyCustomer();
-    if (!invite || !enabled) return false;
+    if (!enabled) return false;
 
     const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
     return this.sendToCustomer(

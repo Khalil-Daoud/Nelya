@@ -1,7 +1,7 @@
 const express = require('express');
 const BaseService = require('./BaseService');
 const models = require('../models');
-const { auth, authorize, requirePermission } = require('../middlewares/auth');
+const { auth, optionalAuth, authorize, requirePermission } = require('../middlewares/auth');
 const { buildListQuery } = require('./listQuery');
 
 // [SEC-FIX] Configuration par modèle : contrôle fin de ce qui est lisible/écrivable.
@@ -11,7 +11,7 @@ const MODEL_CONFIG = {
   Product: {
     publicRead: true,
     writePermission: 'products.manage',
-    writeFields: ['reference', 'name', 'contenance', 'description', 'price', 'stock', 'image_url', 'category'],
+    writeFields: ['reference', 'name', 'contenance', 'description', 'price', 'cost_price', 'stock', 'image_url', 'category'],
     searchFields: ['name', 'description', 'reference', 'category'],
     filterFields: ['category'],
     rangeFields: ['price', 'stock'],
@@ -44,12 +44,15 @@ function pickFields(body, fields) {
   return out;
 }
 
-function sanitize(modelName, data) {
+function sanitize(modelName, data, req) {
   const config = MODEL_CONFIG[modelName] || {};
-  if (!config.readExclude || data === null || data === undefined) return data;
+  const hideCost = modelName === 'Product' && !(req?.user && (req.user.role === 'admin' || req.user.role === 'seller'));
+  const exclude = [...(config.readExclude || [])];
+  if (hideCost) exclude.push('cost_price');
+  if (!exclude.length || data === null || data === undefined) return data;
   const clean = (item) => {
     const json = item && typeof item.toJSON === 'function' ? item.toJSON() : item;
-    for (const field of config.readExclude) delete json[field];
+    for (const field of exclude) delete json[field];
     return json;
   };
   return Array.isArray(data) ? data.map(clean) : clean(data);
@@ -67,15 +70,19 @@ function createDynamicRouter(modelName) {
 
   // [BUG-003 FIX] Routes publiques uniquement pour les produits, sécurisées pour le reste
   const checkReadAuth = (req, res, next) => {
-    if (config.publicRead) return next();
+    if (config.publicRead) return optionalAuth(req, res, next);
     return auth(req, res, () => {
       const roles = config.readRoles || ['admin', 'seller'];
       authorize(...roles)(req, res, next);
     });
   };
 
-  const getReadOptions = () => {
-    return config.readExclude ? { attributes: { exclude: config.readExclude } } : {};
+  const isStaff = (req) => req.user && (req.user.role === 'admin' || req.user.role === 'seller');
+
+  const getReadOptions = (req) => {
+    const exclude = [...(config.readExclude || [])];
+    if (modelName === 'Product' && !isStaff(req)) exclude.push('cost_price');
+    return exclude.length ? { attributes: { exclude } } : {};
   };
 
   // [SEC-FIX] Corps limité aux champs autorisés + rôle protégé (admin uniquement)
@@ -96,6 +103,10 @@ function createDynamicRouter(modelName) {
       res.status(403).json({ message: 'Seul un administrateur peut modifier le mot de passe' });
       return null;
     }
+    if (modelName === 'Product' && 'cost_price' in data) {
+      const cost = Number(data.cost_price);
+      data.cost_price = Number.isFinite(cost) && cost >= 0 ? cost : 0;
+    }
     return data;
   };
 
@@ -107,13 +118,13 @@ function createDynamicRouter(modelName) {
       const { where, order, limit, offset, page, paginated } = buildListQuery(req.query, config);
 
       if (!paginated) {
-        const data = await service.getAll({ ...getReadOptions(), where, order });
-        return res.json(sanitize(modelName, data));
+        const data = await service.getAll({ ...getReadOptions(req), where, order });
+        return res.json(sanitize(modelName, data, req));
       }
 
-      const { rows, count } = await service.getPage({ ...getReadOptions(), where, order, limit, offset });
+      const { rows, count } = await service.getPage({ ...getReadOptions(req), where, order, limit, offset });
       return res.json({
-        data: sanitize(modelName, rows),
+        data: sanitize(modelName, rows, req),
         total: count,
         page,
         limit,
@@ -126,9 +137,9 @@ function createDynamicRouter(modelName) {
 
   router.get('/:id', checkReadAuth, async (req, res) => {
     try {
-      const data = await service.getById(req.params.id, getReadOptions());
+      const data = await service.getById(req.params.id, getReadOptions(req));
       if (!data) return res.status(404).json({ message: 'Not found' });
-      res.json(sanitize(modelName, data));
+      res.json(sanitize(modelName, data, req));
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -145,7 +156,7 @@ function createDynamicRouter(modelName) {
       const data = getWriteBody(req, res);
       if (data === null) return;
       const created = await service.create(data);
-      res.status(201).json(sanitize(modelName, created));
+      res.status(201).json(sanitize(modelName, created, req));
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
@@ -158,8 +169,8 @@ function createDynamicRouter(modelName) {
       if (data === null) return;
       const updated = await service.update(req.params.id, data);
       if (!updated) return res.status(404).json({ message: 'Not found' });
-      const fresh = await service.getById(req.params.id, getReadOptions());
-      res.json(sanitize(modelName, fresh));
+      const fresh = await service.getById(req.params.id, getReadOptions(req));
+      res.json(sanitize(modelName, fresh, req));
     } catch (error) {
       res.status(400).json({ error: error.message });
     }

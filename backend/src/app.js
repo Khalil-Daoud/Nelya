@@ -41,8 +41,13 @@ app.use(cors({
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json());
 
-// Images Statiques
-app.use('/img', express.static(path.join(__dirname, 'img')));
+// Images : d’abord le dossier persistant (volume Railway), puis les visuels du dépôt.
+const { repoImgDir, persistentImgDir, ensureImgDirs } = require('./config/imgPaths');
+ensureImgDirs();
+app.use('/img', express.static(persistentImgDir));
+if (persistentImgDir !== repoImgDir) {
+  app.use('/img', express.static(repoImgDir));
+}
 
 // Upload d'images (produits) – admin & employés
 app.use('/api/uploads', require('./routes/uploads'));

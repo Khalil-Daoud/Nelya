@@ -27,6 +27,22 @@ function shutdown(signal) {
   });
 }
 
+async function waitForDatabase(attempts = 8) {
+  let lastError;
+  for (let i = 1; i <= attempts; i += 1) {
+    try {
+      await sequelize.authenticate();
+      return;
+    } catch (error) {
+      lastError = error;
+      const delay = Math.min(2000 * i, 10000);
+      console.warn(`Base indisponible (essai ${i}/${attempts}) : ${error.message}. Nouvelle tentative dans ${delay / 1000}s…`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
 async function startServer() {
   // Hors du try/catch de la base : un secret invalide n'a rien à voir avec
   // PostgreSQL et doit s'afficher comme tel, sans message trompeur.
@@ -38,7 +54,7 @@ async function startServer() {
   }
 
   try {
-    await sequelize.authenticate();
+    await waitForDatabase();
     console.log('Database connection has been established successfully.');
 
     const { detectFeatures } = require('./config/dbFeatures');
@@ -92,6 +108,21 @@ async function startServer() {
       console.log('Schema migration applied (orders.public_token).');
     } catch (e) {
       console.warn('Migration orders.public_token skipped:', e.message);
+    }
+
+    try {
+      await sequelize.query('ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "extra_fields" TEXT');
+      console.log('Schema migration applied (orders.extra_fields).');
+    } catch (e) {
+      console.warn('Migration orders.extra_fields skipped:', e.message);
+    }
+
+    try {
+      await sequelize.query('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "cost_price" DECIMAL(10,2) DEFAULT 0');
+      await sequelize.query('ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "cost_price" DECIMAL(10,2) DEFAULT 0');
+      console.log('Schema migration applied (products.cost_price, order_items.cost_price).');
+    } catch (e) {
+      console.warn('Migration cost_price skipped:', e.message);
     }
 
     // [BUG-005 FIX] sync({ force: false }) ne modifie jamais les données existantes.

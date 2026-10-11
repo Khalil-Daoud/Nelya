@@ -274,6 +274,9 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
     this.router.events.pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd)).subscribe(e => {
       this.sidebarOpen = false;
       if (e.urlAfterRedirects.includes('/admin/orders')) this.inbox.dismissAlert();
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
     });
   }
 

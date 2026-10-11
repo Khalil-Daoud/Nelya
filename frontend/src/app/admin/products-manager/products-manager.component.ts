@@ -52,7 +52,7 @@ interface StockSummary {
       <div class="page-head">
         <div>
           <h2>Produits</h2>
-          <p>Fiches, photos et prix. Le stock se règle à part, sans ouvrir chaque fiche.</p>
+          <p>Fiches, photos, prix de vente et prix d’achat. Le profit se calcule tout seul sur les ventes.</p>
         </div>
         <div class="header-actions">
           <a mat-stroked-button routerLink="/admin/stock" *ngIf="!showForm">
@@ -97,7 +97,7 @@ interface StockSummary {
           <p class="import-help">
             Colonnes :
             <code>Ref</code>, <code>Catégorie</code>, <code>Désignation</code>,
-            <code>Contenance</code>, <code>Prix</code>, <code>Image</code>
+            <code>Contenance</code>, <code>Prix</code>, <code>PrixAchat</code>, <code>Image</code>
             (<code>Stock</code> et <code>Description</code> facultatives).
             CSV, Excel (<code>.xlsx</code>) ou ZIP. Première feuille du classeur.
           </p>
@@ -182,8 +182,14 @@ interface StockSummary {
               </mat-form-field>
 
               <mat-form-field appearance="outline">
-                <mat-label>Prix</mat-label>
-                <input matInput type="number" formControlName="price" placeholder="ex: 25.00">
+                <mat-label>Prix de vente</mat-label>
+                <input matInput type="number" min="0" step="0.01" formControlName="price" placeholder="ex: 25.00">
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Prix d’achat</mat-label>
+                <input matInput type="number" min="0" step="0.01" formControlName="cost_price" placeholder="ex: 12.00">
+                <mat-hint>Coût fournisseur — sert au calcul du profit</mat-hint>
               </mat-form-field>
 
               <mat-form-field appearance="outline">
@@ -244,7 +250,7 @@ interface StockSummary {
           <div class="row head">
             <span></span>
             <span>Produit</span>
-            <span>Prix</span>
+            <span>Vente / Achat</span>
             <span>Stock</span>
             <span></span>
           </div>
@@ -254,7 +260,11 @@ interface StockSummary {
               <strong>{{ p.name }}</strong>
               <span>{{ p.reference || 'Sans réf.' }} · {{ p.category || '—' }}<ng-container *ngIf="p.contenance"> · {{ p.contenance }}</ng-container></span>
             </div>
-            <span class="price">{{ p.price | formatCurrency }}</span>
+            <span class="price">
+              <strong>{{ p.price | formatCurrency }}</strong>
+              <small>Achat {{ (p.cost_price || 0) | formatCurrency }}</small>
+              <small class="margin" *ngIf="margin(p) != null">Marge {{ margin(p) | formatCurrency }}</small>
+            </span>
             <span class="badge" [ngClass]="statusClass(p.stock)">{{ statusLabel(p.stock) }} · {{ p.stock }}</span>
             <div class="row-actions">
               <button type="button" mat-icon-button color="primary" matTooltip="Modifier" (click)="editProduct(p)">
@@ -331,7 +341,7 @@ interface StockSummary {
     .rows { width: 100%; }
     .row {
       display: grid;
-      grid-template-columns: 52px minmax(0, 1fr) 110px 150px 88px;
+      grid-template-columns: 52px minmax(0, 1fr) 140px 150px 88px;
       gap: 14px;
       align-items: center;
       padding: 10px 18px;
@@ -351,7 +361,9 @@ interface StockSummary {
     .meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
     .meta strong { font-size: 0.95rem; color: var(--luxe-black); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .meta span { font-size: 0.78rem; color: var(--luxe-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .price { font-weight: 600; white-space: nowrap; }
+    .price { display: flex; flex-direction: column; gap: 2px; font-weight: 600; white-space: nowrap; line-height: 1.25; }
+    .price small { font-weight: 400; font-size: 0.72rem; color: var(--luxe-text-muted); }
+    .price .margin { color: #067647; }
     .row-actions { display: flex; justify-content: flex-end; }
 
     .badge {
@@ -493,6 +505,13 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
     return 'En stock';
   }
 
+  margin(product: { price?: number; cost_price?: number }): number | null {
+    const sale = Number(product?.price);
+    const cost = Number(product?.cost_price);
+    if (!Number.isFinite(sale)) return null;
+    return sale - (Number.isFinite(cost) ? cost : 0);
+  }
+
   initForm() {
     this.productForm = this.fb.group({
       reference: [''],
@@ -500,6 +519,7 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
       name: ['', Validators.required],
       category: ['', Validators.required],
       price: ['', [Validators.required, Validators.min(0)]],
+      cost_price: [0, [Validators.min(0)]],
       stock: [0, [Validators.required, Validators.min(0)]],
       image_url: ['', Validators.required],
       description: ['']
@@ -593,9 +613,9 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
 
   downloadTemplate() {
     const rows = [
-      'Ref;Categorie;Designation;Contenance;Prix;Image;Stock',
-      'NEL-001;Soins Visage;Crème de Nuit Régénérante;50 ml;89,900;creme-nuit.jpg;25',
-      'NEL-002;Parfums;Eau de Parfum Oud;100 ml;149,000;https://exemple.com/parfum.jpg;10'
+      'Ref;Categorie;Designation;Contenance;Prix;PrixAchat;Image;Stock',
+      'NEL-001;Soins Visage;Crème de Nuit Régénérante;50 ml;89,900;42,000;creme-nuit.jpg;25',
+      'NEL-002;Parfums;Eau de Parfum Oud;100 ml;149,000;70,000;https://exemple.com/parfum.jpg;10'
     ];
     const blob = new Blob(['\ufeff' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -612,7 +632,7 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
       this.isEditMode = false;
       this.editingProductId = null;
       this.imagePreview = '';
-      this.productForm.reset({ stock: 0 });
+      this.productForm.reset({ stock: 0, cost_price: 0 });
     }
   }
 
@@ -628,6 +648,7 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
       name: product.name,
       category: product.category,
       price: product.price,
+      cost_price: product.cost_price ?? 0,
       stock: product.stock,
       image_url: product.image_url,
       description: product.description
