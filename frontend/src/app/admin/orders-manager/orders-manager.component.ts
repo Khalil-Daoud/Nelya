@@ -15,6 +15,7 @@ import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
 import { PaginationComponent } from '../../components/pagination/pagination.component';
 import { AuthService } from '../../services/auth.service';
 import { SettingsService } from '../../services/settings.service';
+import { ConfirmService } from '../../services/confirm.service';
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
 
@@ -305,7 +306,8 @@ export class OrdersManagerComponent implements OnInit {
     private crud: CrudService,
     private snackBar: MatSnackBar,
     private auth: AuthService,
-    private settings: SettingsService
+    private settings: SettingsService,
+    private confirm: ConfirmService
   ) {}
 
   get canUpdateStatus(): boolean {
@@ -429,9 +431,16 @@ export class OrdersManagerComponent implements OnInit {
     });
   }
 
-  cancelOrder(order: any) {
+  async cancelOrder(order: any) {
     if (order.status === 'cancelled') return;
-    if (!confirm(`Annuler la commande #${String(order.id).slice(0, 8)} ? Le stock sera remis en rayon.`)) return;
+    const ref = String(order.id).replace(/-/g, '').slice(0, 8).toUpperCase();
+    const ok = await this.confirm.ask({
+      danger: true,
+      title: `Annuler #${ref} ?`,
+      message: 'Le stock des articles sera remis en rayon. Cette commande passera en « Annulée ».',
+      confirmLabel: 'Annuler la commande'
+    });
+    if (!ok) return;
     this.updateStatus(order, 'cancelled');
   }
 

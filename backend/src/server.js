@@ -125,6 +125,27 @@ async function startServer() {
       console.warn('Migration cost_price skipped:', e.message);
     }
 
+    try {
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS "audit_logs" (
+          "id" UUID PRIMARY KEY,
+          "actor_id" UUID,
+          "actor_name" VARCHAR(255) NOT NULL,
+          "action" VARCHAR(80) NOT NULL,
+          "entity" VARCHAR(40) NOT NULL,
+          "entity_id" VARCHAR(80),
+          "summary" TEXT NOT NULL,
+          "meta" TEXT,
+          "created_at" TIMESTAMP WITH TIME ZONE NOT NULL
+        )
+      `);
+      await sequelize.query('CREATE INDEX IF NOT EXISTS "audit_logs_created_at_idx" ON "audit_logs" ("created_at" DESC)');
+      await sequelize.query('CREATE INDEX IF NOT EXISTS "audit_logs_entity_idx" ON "audit_logs" ("entity")');
+      console.log('Schema migration applied (audit_logs).');
+    } catch (e) {
+      console.warn('Migration audit_logs skipped:', e.message);
+    }
+
     // [BUG-005 FIX] sync({ force: false }) ne modifie jamais les données existantes.
     // En production, utiliser des migrations Sequelize (sequelize-cli).
     await sequelize.sync({ force: false });
@@ -141,7 +162,10 @@ async function startServer() {
       await sequelize.query('CREATE INDEX IF NOT EXISTS "orders_created_at_idx" ON "orders" ("created_at" DESC)');
       await sequelize.query('CREATE INDEX IF NOT EXISTS "order_items_order_id_idx" ON "order_items" ("order_id")');
       await sequelize.query('CREATE INDEX IF NOT EXISTS "order_items_product_id_idx" ON "order_items" ("product_id")');
-      console.log('Indexes ensured (products, orders, order_items).');
+      await sequelize.query('CREATE INDEX IF NOT EXISTS "reviews_product_id_idx" ON "reviews" ("product_id")');
+      await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS "reviews_user_product_idx" ON "reviews" ("user_id", "product_id") WHERE "product_id" IS NOT NULL');
+      await sequelize.query('CREATE UNIQUE INDEX IF NOT EXISTS "reviews_user_shop_idx" ON "reviews" ("user_id") WHERE "product_id" IS NULL');
+      console.log('Indexes ensured (products, orders, order_items, reviews).');
     } catch (e) {
       console.warn('Index creation skipped:', e.message);
     }

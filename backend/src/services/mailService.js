@@ -112,9 +112,7 @@ async function sendOrderCreated(order, url) {
     url,
     extra: 'Paiement en espèces à la livraison.'
   });
-  const sent = await sendMail(to, `Nelya — commande ${ref}`, bodies);
-  if (sent) console.log('[Mail] Confirmation commande envoyée à', to);
-  return sent;
+  return sendMail(to, `Nelya — commande ${ref}`, bodies);
 }
 
 async function sendOrderStatus(order, url) {
@@ -131,9 +129,7 @@ async function sendOrderStatus(order, url) {
     symbol,
     url
   });
-  const sent = await sendMail(to, `Nelya — ${ref} ${label.toLowerCase()}`, bodies);
-  if (sent) console.log('[Mail] Mise à jour statut envoyée à', to);
-  return sent;
+  return sendMail(to, `Nelya — ${ref} ${label.toLowerCase()}`, bodies);
 }
 
 module.exports = { isConfigured, sendOrderCreated, sendOrderStatus };

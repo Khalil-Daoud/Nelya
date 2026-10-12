@@ -9,6 +9,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ConfirmService } from '../../services/confirm.service';
 
 @Component({
   selector: 'app-categories-manager',
@@ -130,7 +131,8 @@ export class CategoriesManagerComponent implements OnInit {
   constructor(
     private crud: CrudService,
     private snackBar: MatSnackBar,
-    private fb: FormBuilder
+    private fb: FormBuilder,
+    private confirm: ConfirmService
   ) {}
 
   ngOnInit() {
@@ -220,19 +222,23 @@ export class CategoriesManagerComponent implements OnInit {
     }
   }
 
-  deleteCategory(category: any) {
+  async deleteCategory(category: any) {
     const count = this.productCount(category.name);
-    const warning = count > 0
-      ? `Attention : ${count} produit(s) utilisent cette catégorie. Voulez-vous vraiment la supprimer ?`
-      : 'Voulez-vous vraiment supprimer cette catégorie ?';
-    if (confirm(warning)) {
-      this.crud.delete('categories', category.id).subscribe({
-        next: () => {
-          this.snackBar.open('Catégorie supprimée', 'OK', { duration: 3000 });
-          this.loadCategories();
-        },
-        error: () => this.snackBar.open('Erreur lors de la suppression de la catégorie', 'Fermer', { duration: 4000 })
-      });
-    }
+    const ok = await this.confirm.ask({
+      danger: true,
+      title: `Supprimer « ${category.name} » ?`,
+      message: count > 0
+        ? `${count} produit${count > 1 ? 's' : ''} utilise${count > 1 ? 'nt' : ''} encore cette catégorie.`
+        : 'Cette catégorie disparaîtra de la boutique.',
+      confirmLabel: 'Supprimer'
+    });
+    if (!ok) return;
+    this.crud.delete('categories', category.id).subscribe({
+      next: () => {
+        this.snackBar.open('Catégorie supprimée', 'OK', { duration: 3000 });
+        this.loadCategories();
+      },
+      error: () => this.snackBar.open('Erreur lors de la suppression de la catégorie', 'Fermer', { duration: 4000 })
+    });
   }
 }

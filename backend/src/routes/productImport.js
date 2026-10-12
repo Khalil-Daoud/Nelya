@@ -9,6 +9,7 @@ const { auth, authorize, requirePermission } = require('../middlewares/auth');
 const { Product, Category } = require('../models');
 const { parseCsv, normalizeHeader, parsePrice } = require('../utils/csv');
 const { parseSpreadsheet } = require('../utils/spreadsheet');
+const audit = require('../services/auditService');
 
 const router = express.Router();
 
@@ -265,6 +266,12 @@ router.post('/import', auth, authorize('admin', 'seller'), requirePermission('pr
         }
       }
 
+      audit.log({
+        req,
+        action: 'catalog.import',
+        entity: 'product',
+        summary: `a importé le catalogue (${created} créé${created > 1 ? 's' : ''}, ${updated} mis à jour)`
+      });
       res.json({
         total: dataRows.length,
         created,

@@ -146,12 +146,29 @@ button { font-family: var(--font-body); }
   border-radius: var(--radius-sm);
 }
 
-/* Scrollbar */
+/* Scrollbar — piste ivoire sur le site ; variante sombre pour les fonds noirs */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--luxe-offwhite); }
 ::-webkit-scrollbar-thumb { background: #d8d8d8; border-radius: var(--radius-full); }
 ::-webkit-scrollbar-thumb:hover { background: var(--luxe-gold); }
 html { scrollbar-width: thin; scrollbar-color: #d8d8d8 var(--luxe-offwhite); }
+
+.sidebar,
+.sidebar * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(198, 160, 74, 0.45) transparent;
+}
+.sidebar::-webkit-scrollbar,
+.sidebar *::-webkit-scrollbar { width: 6px; height: 6px; }
+.sidebar::-webkit-scrollbar-track,
+.sidebar *::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb,
+.sidebar *::-webkit-scrollbar-thumb {
+  background: rgba(198, 160, 74, 0.38);
+  border-radius: 99px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover,
+.sidebar *::-webkit-scrollbar-thumb:hover { background: var(--luxe-gold); }
 
 /* ==========================================================================
    3. TYPOGRAPHIE
@@ -229,6 +246,14 @@ html { scrollbar-width: thin; scrollbar-color: #d8d8d8 var(--luxe-offwhite); }
   font-weight: 500 !important;
   transition: var(--transition-smooth) !important;
   border-radius: var(--radius-full) !important;
+}
+
+/* Flat / unelevated : sans ça, Material reste bleu indigo */
+.mat-mdc-unelevated-button.mat-primary,
+.mat-mdc-raised-button.mat-primary,
+.mat-flat-button.mat-primary {
+  background-color: var(--luxe-black) !important;
+  color: var(--luxe-white) !important;
 }
 
 /* Bouton primaire (noir → or au survol) */
@@ -433,6 +458,25 @@ html { scrollbar-width: thin; scrollbar-color: #d8d8d8 var(--luxe-offwhite); }
 /* ==========================================================================
    10. MODALES & MENUS
    ========================================================================== */
+.cdk-overlay-container { z-index: 2000; }
+.cdk-overlay-container,
+.cdk-global-overlay-wrapper {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+.cdk-overlay-dark-backdrop {
+  background: rgba(10, 10, 10, 0.58) !important;
+}
+/* Évite que le focus de la fenêtre fasse défiler la page (lignes du bas du tableau). */
+.cdk-global-scrollblock {
+  position: static !important;
+  width: auto !important;
+  overflow: hidden !important;
+}
+
 .luxury-dialog .mdc-dialog__surface {
   border-radius: var(--radius-lg) !important;
   box-shadow: var(--shadow-pop) !important;

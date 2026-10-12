@@ -1,19 +1,23 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { CrudService } from '../services/crud.service';
 import { SettingsService, DEFAULT_HERO_IMAGE } from '../services/settings.service';
 import { CategoryCount } from '../services/catalog.types';
 import { ProductCardComponent } from '../components/product-card/product-card.component';
 import { ImageUrlPipe } from '../pipes/image-url.pipe';
+import { ApiService } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
+import { ReviewDialogComponent } from '../products/product-detail/product-detail.component';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, RouterLink, MatButtonModule, MatIconModule, MatSnackBarModule, ProductCardComponent, ImageUrlPipe],
+    imports: [CommonModule, RouterLink, MatButtonModule, MatIconModule, MatDialogModule, MatSnackBarModule, ProductCardComponent, ImageUrlPipe],
   template: `
     <div class="home-wrapper">
       <!-- HERO -->
@@ -27,35 +31,36 @@ import { ImageUrlPipe } from '../pipes/image-url.pipe';
           <h1 class="luxe-hero-title fade-in">L'Éclat du<br><em>Naturel</em></h1>
           <p class="luxe-hero-sub fade-in">Des soins botaniques d'exception, formulés avec passion pour révéler votre beauté intérieure.</p>
           <div class="luxe-hero-cta fade-in">
-            <button mat-flat-button color="primary" routerLink="/collection">DÉCOUVRIR LA BOUTIQUE</button>
+            <a class="hero-btn" routerLink="/collection">Découvrir la boutique</a>
             <a class="luxe-hero-link" routerLink="/collection" [queryParams]="{cat: 'Soins'}">Nos soins <mat-icon>arrow_forward</mat-icon></a>
           </div>
         </div>
-        <div class="luxe-hero-stats fade-in">
-          <div class="stat"><span class="stat-num">100%</span><span class="stat-label">Naturel</span></div>
-          <div class="stat"><span class="stat-num">+30</span><span class="stat-label">Soins exclusifs</span></div>
-          <div class="stat"><span class="stat-num">0</span><span class="stat-label">Composants nocifs</span></div>
-        </div>
       </section>
 
-      <!-- USPs -->
-      <section class="luxe-usps">
-        <div class="luxe-usps-grid container">
-          <div class="usp">
-            <mat-icon>local_shipping</mat-icon>
-            <div><strong>Livraison partout</strong><span>En Tunisie en 48h</span></div>
-          </div>
-          <div class="usp">
-            <mat-icon>verified_user</mat-icon>
-            <div><strong>Paiement sécurisé</strong><span>Transaction protégée</span></div>
-          </div>
-          <div class="usp">
-            <mat-icon>recycling</mat-icon>
-            <div><strong>Éco-responsable</strong><span>Emballages recyclables</span></div>
-          </div>
-          <div class="usp">
-            <mat-icon>support_agent</mat-icon>
-            <div><strong>Conseils d'expertes</strong><span>Une équipe à votre écoute</span></div>
+      <section class="luxe-trust">
+        <div class="container">
+          <p class="trust-kicker">100 % naturel &nbsp;·&nbsp; +30 soins exclusifs</p>
+          <div class="trust-grid">
+            <article class="trust-card">
+              <span class="trust-ico"><mat-icon>local_shipping</mat-icon></span>
+              <h3>Livraison partout</h3>
+              <p>Expédition en 48 h partout en Tunisie.</p>
+            </article>
+            <article class="trust-card">
+              <span class="trust-ico"><mat-icon>verified_user</mat-icon></span>
+              <h3>Paiement sûr</h3>
+              <p>Transaction protégée, espèces ou carte.</p>
+            </article>
+            <article class="trust-card">
+              <span class="trust-ico"><mat-icon>recycling</mat-icon></span>
+              <h3>Éco-responsable</h3>
+              <p>Emballages pensés pour être recyclés.</p>
+            </article>
+            <article class="trust-card">
+              <span class="trust-ico"><mat-icon>support_agent</mat-icon></span>
+              <h3>Conseils d’expertes</h3>
+              <p>Une équipe à l’écoute, du choix au rituel.</p>
+            </article>
           </div>
         </div>
       </section>
@@ -116,28 +121,36 @@ import { ImageUrlPipe } from '../pipes/image-url.pipe';
         </div>
       </section>
 
-      <!-- TÉMOIGNAGE -->
-      <section class="luxe-quote container">
-        <mat-icon class="luxe-quote-mark">format_quote</mat-icon>
-        <blockquote>« J'ai enfin trouvé des soins qui respectent ma peau tout en m'offrant un vrai moment de luxe. Le rituel Nelya est devenu mon moment préféré. »</blockquote>
-        <div class="luxe-quote-author">
-          <span class="luxe-quote-name">Sarah B.</span>
-          <span class="luxe-quote-role">Cliente fidèle</span>
-          <div class="luxe-stars">
-            <mat-icon>star</mat-icon><mat-icon>star</mat-icon><mat-icon>star</mat-icon><mat-icon>star</mat-icon><mat-icon>star</mat-icon>
+      <section class="luxe-voices">
+        <div class="container">
+          <div class="luxe-sec-head">
+            <span class="luxe-sec-eyebrow">Témoignages</span>
+            <h2 class="luxe-sec-title">La voix de nos clientes</h2>
+            <div class="luxe-sec-line"></div>
+            <p class="voices-score" *ngIf="reviewCount">{{ reviewAverage | number:'1.1-1' }} / 5 · {{ reviewCount }} avis</p>
           </div>
-        </div>
-      </section>
 
-      <!-- NEWSLETTER -->
-      <section class="luxe-newsletter">
-        <div class="container luxe-newsletter-inner">
-          <h3>REJOIGNEZ LE CLUB NELYA</h3>
-          <p>Recevez nos offres exclusives et conseils beauté directement dans votre boîte mail.</p>
-          <form class="luxe-subscribe" (submit)="subscribe(email.value); $event.preventDefault()">
-            <input #email type="email" required placeholder="Votre adresse email" aria-label="Votre adresse email">
-            <button mat-flat-button color="primary" type="submit">S'INSCRIRE</button>
-          </form>
+          <div class="voices-grid">
+            <article class="voice-card" *ngFor="let r of displayReviews">
+              <div class="luxe-stars">
+                <mat-icon *ngFor="let s of [1,2,3,4,5]">{{ s <= r.rating ? 'star' : 'star_border' }}</mat-icon>
+              </div>
+              <p>« {{ r.comment }} »</p>
+              <div class="voice-who">
+                <span class="voice-avatar">{{ (r.authorInitial || r.author?.[0] || 'N') }}</span>
+                <div>
+                  <strong>{{ r.author }}</strong>
+                  <small>{{ r.product_name || 'Témoignage boutique' }}</small>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="voices-cta">
+            <button type="button" class="voice-link" (click)="openShopReview()">
+              Laisser un témoignage <mat-icon>east</mat-icon>
+            </button>
+          </div>
         </div>
       </section>
     </div>
@@ -156,27 +169,61 @@ import { ImageUrlPipe } from '../pipes/image-url.pipe';
     .luxe-hero-title em { font-style: italic; color: var(--luxe-gold); }
     .luxe-hero-sub { font-size: clamp(1rem, 2vw, 1.25rem); font-weight: 300; max-width: 600px; margin: 0 auto 45px; line-height: 1.8; font-family: var(--font-body); opacity: 0.95; }
     .luxe-hero-cta { display: flex; align-items: center; justify-content: center; gap: 30px; flex-wrap: wrap; }
-    .luxe-hero-cta button { padding: 0 36px; height: 54px; font-size: 0.78rem; letter-spacing: 2px; }
+    .hero-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 54px; padding: 0 36px; border-radius: 999px;
+      background: var(--luxe-gold); color: var(--luxe-black);
+      text-decoration: none; font-size: 0.78rem; letter-spacing: 2.2px;
+      text-transform: uppercase; font-weight: 600;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+      transition: background 0.25s ease, transform 0.25s ease;
+    }
+    .hero-btn:hover { background: var(--luxe-white); transform: translateY(-2px); }
     .luxe-hero-link { color: var(--luxe-white); text-decoration: none; font-size: 0.8rem; letter-spacing: 2px; text-transform: uppercase; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--luxe-gold); padding-bottom: 6px; transition: color 0.3s ease; }
     .luxe-hero-link:hover { color: var(--luxe-gold); }
-    .luxe-hero-stats {
-      position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
-      display: flex; justify-content: center; gap: 0;
-      background: rgba(10,10,10,0.55); backdrop-filter: blur(10px);
-      border-top: 1px solid rgba(255,255,255,0.12);
-    }
-    .stat { flex: 1; max-width: 280px; padding: 26px 20px; text-align: center; border-right: 1px solid rgba(255,255,255,0.12); display: flex; flex-direction: column; gap: 6px; }
-    .stat:last-child { border-right: none; }
-    .stat-num { font-family: var(--font-heading); font-size: 1.8rem; color: var(--luxe-gold); }
-    .stat-label { font-size: 0.72rem; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,0.85); font-weight: 300; }
 
-    /* USPs */
-    .luxe-usps { border-bottom: 1px solid var(--luxe-border); }
-    .luxe-usps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; padding: 34px 40px; }
-    .usp { display: flex; align-items: center; gap: 16px; }
-    .usp mat-icon { color: var(--luxe-gold); font-size: 34px; width: 34px; height: 34px; }
-    .usp strong { display: block; font-size: 0.85rem; letter-spacing: 0.5px; color: var(--luxe-black); font-weight: 600; margin-bottom: 3px; }
-    .usp span { font-size: 0.78rem; color: var(--luxe-text-muted); font-weight: 300; }
+    .luxe-trust {
+      position: relative; z-index: 3;
+      margin-top: 0; padding: 48px 0 28px;
+      background: #f7f3eb;
+    }
+    .trust-kicker {
+      text-align: center; margin: 0 0 22px;
+      color: var(--luxe-gold); font-size: 0.78rem;
+      letter-spacing: 2.4px; text-transform: uppercase; font-weight: 600;
+    }
+    .trust-grid {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .trust-card {
+      background: var(--luxe-white);
+      border: 1px solid var(--luxe-border);
+      border-radius: 18px;
+      padding: 26px 22px 24px;
+      min-width: 0;
+      box-shadow: 0 12px 32px rgba(20, 16, 10, 0.06);
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+    .trust-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(198, 160, 74, 0.45);
+      box-shadow: 0 16px 36px rgba(20, 16, 10, 0.1);
+    }
+    .trust-ico {
+      width: 44px; height: 44px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      background: #f6f1e6; color: var(--luxe-gold); margin-bottom: 16px;
+    }
+    .trust-ico mat-icon { font-size: 22px; width: 22px; height: 22px; }
+    .trust-card h3 {
+      margin: 0 0 8px; font-size: 1.02rem; font-weight: 600;
+      color: var(--luxe-black); letter-spacing: 0; line-height: 1.3;
+    }
+    .trust-card p {
+      margin: 0; font-size: 0.86rem; font-weight: 300;
+      color: var(--luxe-text-muted); line-height: 1.5;
+    }
 
     /* Sections communes */
     .container { max-width: 1440px; margin: 0 auto; padding: 0 40px; }
@@ -186,7 +233,7 @@ import { ImageUrlPipe } from '../pipes/image-url.pipe';
     .luxe-sec-line { width: 46px; height: 2px; background: var(--luxe-gold); margin: 24px auto 0; border-radius: 2px; }
 
     /* Catégories */
-    .luxe-categories { padding: 110px 40px 40px; }
+    .luxe-categories { padding: 80px 40px 40px; }
     .luxe-cat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 26px; }
     .luxe-cat-tile { position: relative; aspect-ratio: 4 / 5; overflow: hidden; border-radius: var(--radius-lg); text-decoration: none; display: block; }
     .luxe-cat-tile img { width: 100%; height: 100%; object-fit: cover; transition: transform 1s ease; }
@@ -218,41 +265,54 @@ import { ImageUrlPipe } from '../pipes/image-url.pipe';
     .luxe-text-link { color: var(--luxe-gold); letter-spacing: 2px; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 10px; }
     .luxe-text-link:hover { color: var(--luxe-white); }
 
-    /* Témoignage */
-    .luxe-quote { text-align: center; padding: 120px 40px; max-width: 900px; }
-    .luxe-quote-mark { color: var(--luxe-gold); font-size: 64px; width: 64px; height: 64px; }
-    .luxe-quote blockquote { font-family: var(--font-heading); font-size: clamp(1.4rem, 3vw, 2rem); line-height: 1.6; color: var(--luxe-black); margin: 24px auto 36px; font-weight: 400; }
-    .luxe-quote-author { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .luxe-quote-name { font-weight: 600; color: var(--luxe-black); letter-spacing: 1px; }
-    .luxe-quote-role { font-size: 0.75rem; color: var(--luxe-text-muted); text-transform: uppercase; letter-spacing: 2px; }
-    .luxe-stars { display: flex; gap: 4px; margin-top: 8px; }
-    .luxe-stars mat-icon { font-size: 20px; width: 20px; height: 20px; color: var(--luxe-gold); }
-
-    /* Newsletter */
-    .luxe-newsletter { background: var(--luxe-offwhite); border-top: 1px solid var(--luxe-border); padding: 110px 40px; }
-    .luxe-newsletter-inner { text-align: center; max-width: 640px; }
-    .luxe-newsletter h3 { font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: 4px; text-transform: uppercase; color: var(--luxe-black); margin-bottom: 18px; font-family: var(--font-heading); font-weight: 500; }
-    .luxe-newsletter p { color: var(--luxe-text-muted); margin-bottom: 40px; font-weight: 300; line-height: 1.7; }
-    .luxe-subscribe { display: flex; gap: 0; box-shadow: var(--shadow-sm); border-radius: var(--radius-pill); overflow: hidden; background: var(--luxe-white); }
-    .luxe-subscribe input { flex: 1; padding: 16px 26px; border: none; outline: none; font-family: var(--font-body); font-size: 0.9rem; }
-    .luxe-subscribe button { border-radius: 0 !important; height: auto; letter-spacing: 2px; }
+    .luxe-voices { padding: 90px 0 0; background: var(--luxe-white); }
+    .voices-score { margin: 16px 0 0; color: var(--luxe-text-muted); font-size: 0.88rem; }
+    .voices-grid {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 22px;
+    }
+    .voice-card {
+      background: var(--luxe-white); border: 1px solid var(--luxe-border);
+      border-radius: 18px; padding: 26px 24px 22px;
+      display: flex; flex-direction: column; gap: 16px; min-width: 0;
+    }
+    .voice-card p {
+      margin: 0; color: var(--luxe-charcoal); font-weight: 300; line-height: 1.7;
+      font-size: 0.98rem; flex: 1;
+    }
+    .voice-who { display: flex; align-items: center; gap: 12px; }
+    .voice-avatar {
+      width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+      background: var(--luxe-black); color: var(--luxe-gold);
+      display: flex; align-items: center; justify-content: center; font-weight: 700;
+    }
+    .voice-who strong { display: block; font-size: 0.9rem; color: var(--luxe-black); }
+    .voice-who small { display: block; font-size: 0.75rem; color: var(--luxe-text-muted); }
+    .voices-cta { text-align: center; padding: 40px 0 72px; }
+    .voice-link {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: none; border: none; cursor: pointer;
+      font-family: var(--font-body); font-size: 0.78rem; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--luxe-gold); padding: 0 0 6px;
+      border-bottom: 1px solid var(--luxe-gold);
+    }
+    .voice-link mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    .voice-link:hover { color: var(--luxe-black); border-bottom-color: var(--luxe-black); }
+    .luxe-stars { display: flex; gap: 3px; }
+    .luxe-stars mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--luxe-gold); }
 
     @media (max-width: 960px) {
       .container, .luxe-categories { padding-left: 20px; padding-right: 20px; }
-      .luxe-usps-grid { grid-template-columns: 1fr 1fr; padding: 28px 20px; }
+      .luxe-trust { padding-top: 32px; }
+      .trust-grid { grid-template-columns: 1fr 1fr; }
+      .voices-grid { grid-template-columns: 1fr; }
       .luxe-atelier-grid { grid-template-columns: 1fr; }
       .luxe-atelier-media { min-height: 340px; }
       .luxe-atelier-body { padding: 50px 26px; }
-      .luxe-hero-stats { flex-wrap: wrap; }
-      .stat { max-width: 50%; border-bottom: 1px solid rgba(255,255,255,0.12); }
-      .stat:nth-child(2n) { border-right: none; }
-      .luxe-subscribe { flex-direction: column; border-radius: var(--radius-lg); }
-      .luxe-subscribe input { padding: 18px 22px; }
       .luxe-prod-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
     }
-    @media (max-width: 480px) {
-      .luxe-usps-grid { grid-template-columns: 1fr; }
-      .stat { max-width: 100%; border-right: none; }
+    @media (max-width: 560px) {
+      .trust-grid { grid-template-columns: 1fr; }
       .luxe-prod-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
     }
   `]
@@ -261,11 +321,30 @@ export class HomeComponent implements OnInit {
   products: any[] = [];
   categories: any[] = [];
   heroImage = DEFAULT_HERO_IMAGE;
+  homeReviews: any[] = [];
+  reviewCount = 0;
+  reviewAverage = 0;
+  shopReviewDone = false;
+  readonly fallbackReviews = [{
+    comment: 'J’ai enfin trouvé des soins qui respectent ma peau tout en m’offrant un vrai moment de luxe. Le rituel Nelya est devenu mon moment préféré.',
+    author: 'Sarah B.',
+    authorInitial: 'S',
+    product_name: 'Cliente fidèle',
+    rating: 5
+  }];
+
+  get displayReviews(): any[] {
+    return this.homeReviews.length ? this.homeReviews.slice(0, 3) : this.fallbackReviews;
+  }
 
   constructor(
     private crud: CrudService,
     private snackBar: MatSnackBar,
-    private settings: SettingsService
+    private settings: SettingsService,
+    private api: ApiService,
+    private auth: AuthService,
+    private dialog: MatDialog,
+    private router: Router
   ) {}
 
   ngOnInit() {
@@ -287,9 +366,47 @@ export class HomeComponent implements OnInit {
       },
       error: () => {}
     });
+
+    this.loadReviews();
   }
 
-  subscribe(email: string) {
-    this.snackBar.open('Merci ! Votre inscription à la newsletter a bien été enregistrée.', 'Fermer', { duration: 3500 });
+  openShopReview() {
+    if (!this.auth.isLoggedIn) {
+      this.snackBar.open('Connectez-vous pour laisser un témoignage.', 'Connexion', { duration: 4000 })
+        .onAction().subscribe(() => this.router.navigate(['/auth/login']));
+      return;
+    }
+    if (this.shopReviewDone) {
+      this.snackBar.open('Vous avez déjà publié un témoignage.', 'Fermer', { duration: 3500 });
+      return;
+    }
+    const ref = this.dialog.open(ReviewDialogComponent, { width: '520px', panelClass: 'luxury-dialog' });
+    ref.componentInstance.productName = 'Votre témoignage Nelya';
+    ref.afterClosed().subscribe((result) => {
+      if (!result) return;
+      this.api.post('reviews', { rating: result.rating, comment: result.comment }).subscribe({
+        next: () => {
+          this.snackBar.open('Merci, votre témoignage est publié.', 'Fermer', { duration: 3500 });
+          this.loadReviews();
+        },
+        error: (err) => this.snackBar.open(err?.error?.message || 'Impossible de publier le témoignage', 'Fermer', { duration: 4000 })
+      });
+    });
   }
+
+  private loadReviews() {
+    this.api.get<any>('reviews', { limit: 12 }).subscribe({
+      next: (page) => {
+        this.homeReviews = page.data || [];
+        this.reviewCount = Number(page.count || 0);
+        this.reviewAverage = Number(page.average || 0);
+      },
+      error: () => {}
+    });
+    this.api.get<any>('reviews', { shop: '1', limit: 1 }).subscribe({
+      next: (page) => { this.shopReviewDone = Boolean(page.mine); },
+      error: () => {}
+    });
+  }
+
 }

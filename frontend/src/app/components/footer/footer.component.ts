@@ -78,8 +78,8 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
     .luxe-footer {
       background: var(--luxe-black);
       color: var(--luxe-white);
-      padding: 90px 40px 30px;
-      margin-top: 110px;
+      padding: 72px 40px 30px;
+      margin-top: 0;
     }
 
     .luxe-certifications {

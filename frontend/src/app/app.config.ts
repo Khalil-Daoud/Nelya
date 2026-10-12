@@ -4,6 +4,7 @@ import { routes } from './app.routes';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { HttpClientModule, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDialogModule } from '@angular/material/dialog';
 import { authInterceptor } from './interceptors/auth.interceptor';
 import { SettingsService } from './services/settings.service';
 
@@ -15,7 +16,7 @@ export const appConfig: ApplicationConfig = {
     })),
     provideAnimations(),
     provideHttpClient(withInterceptors([authInterceptor])),
-    importProvidersFrom(MatSnackBarModule),
+    importProvidersFrom(MatSnackBarModule, MatDialogModule),
     {
       provide: APP_INITIALIZER,
       useFactory: (settings: SettingsService) => () => settings.load(),

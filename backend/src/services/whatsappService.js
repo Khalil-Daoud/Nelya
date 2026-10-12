@@ -229,25 +229,11 @@ class WhatsAppService {
     const { symbol } = await settingsService.getCurrency().catch(() => ({ symbol: '€' }));
     const message = this.formatMessage(order, symbol);
 
-    if (await this.sendViaCallMeBot(toNumber, message)) {
-      console.log('[WhatsApp] Notification boutique envoyée via CallMeBot');
-      return;
-    }
+    if (await this.sendViaCallMeBot(toNumber, message)) return;
+    if (await this.sendViaTwilio(toNumber, message)) return;
+    if (await this.sendViaWebhook(toNumber, message)) return;
 
-    if (await this.sendViaTwilio(toNumber, message)) {
-      console.log('[WhatsApp] Notification boutique envoyée via Twilio');
-      return;
-    }
-
-    if (await this.sendViaWebhook(toNumber, message)) {
-      console.log('[WhatsApp] Notification boutique envoyée via webhook');
-      return;
-    }
-
-    console.log('---[WhatsApp Notification]---');
-    console.log('To:', `+${toNumber}`);
-    console.log(message);
-    console.log('---[End]---');
+    console.warn('[WhatsApp] Notification boutique non envoyée : aucun fournisseur configuré.');
   }
 
   /**
@@ -262,36 +248,12 @@ class WhatsAppService {
       return false;
     }
 
-    if (await this.sendViaCloudApiText(to, message)) {
-      console.log('[WhatsApp] Récap client envoyé via Cloud API (texte) →', to);
-      return true;
-    }
-
-    if (await this.sendTemplateViaCloudApi(to, templateParams)) {
-      console.log('[WhatsApp] Récap client envoyé via Cloud API (modèle) →', to);
-      return true;
-    }
-
-    if (await this.sendViaTwilio(to, message)) {
-      console.log('[WhatsApp] Récap client envoyé via Twilio →', to);
-      return true;
-    }
-
-    if (await this.sendViaUltramsg(to, message)) {
-      console.log('[WhatsApp] Récap client envoyé via UltraMsg →', to);
-      return true;
-    }
-
-    if (await this.sendViaWebhook(to, message)) {
-      console.log('[WhatsApp] Récap client envoyé via webhook →', to);
-      return true;
-    }
-
-    if (await this.sendViaCallMeBot(to, message)) {
-      console.log('[WhatsApp] Récap client envoyé via CallMeBot →', to);
-      return true;
-    }
-
+    if (await this.sendViaCloudApiText(to, message)) return true;
+    if (await this.sendTemplateViaCloudApi(to, templateParams)) return true;
+    if (await this.sendViaTwilio(to, message)) return true;
+    if (await this.sendViaUltramsg(to, message)) return true;
+    if (await this.sendViaWebhook(to, message)) return true;
+    if (await this.sendViaCallMeBot(to, message)) return true;
     return false;
   }
 

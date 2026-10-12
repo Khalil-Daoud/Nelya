@@ -14,6 +14,8 @@ import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angula
 import { FormsModule } from '@angular/forms';
 import { PaginationComponent } from '../../components/pagination/pagination.component';
 import { SettingsService, PermissionGroup } from '../../services/settings.service';
+import { ConfirmService } from '../../services/confirm.service';
+import { ActivatedRoute, Router } from '@angular/router';
 
 @Component({
   selector: 'app-reset-password-dialog',
@@ -78,16 +80,12 @@ export class ResetPasswordDialogComponent {
   template: `
     <div class="manager-container fade-in">
       <div class="header">
-        <h2 class="luxury-title">Clients & Employés</h2>
-        <p>Gérez les comptes clients et ajoutez des comptes employés.</p>
+        <h2 class="luxury-title">{{ isClients ? 'Clients' : 'Employés' }}</h2>
+        <p *ngIf="isClients">Cliquez un client pour ouvrir sa fiche : commandes, avis et coordonnées.</p>
+        <p *ngIf="!isClients">Comptes employés et administrateurs, avec leur groupe de permissions.</p>
       </div>
 
       <div class="toolbar">
-        <div class="tabs">
-          <button class="tab" [ngClass]="{'active': filter === 'all'}" (click)="setFilter('all')">Tous ({{allCount}})</button>
-          <button class="tab" [ngClass]="{'active': filter === 'client'}" (click)="setFilter('client')">Clients ({{clientCount}})</button>
-          <button class="tab" [ngClass]="{'active': filter === 'employee'}" (click)="setFilter('employee')">Employés ({{employeeCount}})</button>
-        </div>
         <mat-form-field appearance="outline" class="search-field">
           <mat-icon matPrefix>search</mat-icon>
           <mat-label>Rechercher (nom, email)</mat-label>
@@ -95,7 +93,7 @@ export class ResetPasswordDialogComponent {
         </mat-form-field>
         <button mat-raised-button color="primary" (click)="showForm = !showForm">
           <mat-icon>{{showForm ? 'close' : 'person_add'}}</mat-icon>
-          {{showForm ? 'Annuler' : 'Ajouter un compte'}}
+          {{showForm ? 'Annuler' : (isClients ? 'Ajouter un client' : 'Ajouter un employé')}}
         </button>
       </div>
 
@@ -118,10 +116,9 @@ export class ResetPasswordDialogComponent {
             <mat-label>Mot de passe (min. 6)</mat-label>
             <input matInput type="password" [(ngModel)]="newUser.password">
           </mat-form-field>
-          <mat-form-field appearance="outline">
+          <mat-form-field appearance="outline" *ngIf="!isClients">
             <mat-label>Rôle</mat-label>
             <mat-select [(ngModel)]="newUser.role">
-              <mat-option value="client">Client</mat-option>
               <mat-option value="seller">Employé</mat-option>
               <mat-option value="admin">Administrateur</mat-option>
             </mat-select>
@@ -142,8 +139,8 @@ export class ResetPasswordDialogComponent {
         <table mat-table [dataSource]="pagedUsers" class="luxe-table">
           <ng-container matColumnDef="username">
             <th mat-header-cell *matHeaderCellDef> Utilisateur </th>
-            <td mat-cell *matCellDef="let user">
-              <div class="user-info">
+            <td mat-cell *matCellDef="let user" (click)="openFiche(user)">
+              <div class="user-info" [class.clickable]="isClients">
                 <div class="avatar">{{user.first_name ? user.first_name[0].toUpperCase() : 'U'}}</div>
                 <div>
                   <span>{{user.first_name}} {{user.last_name}}</span>
@@ -195,7 +192,10 @@ export class ResetPasswordDialogComponent {
           <ng-container matColumnDef="actions">
             <th mat-header-cell *matHeaderCellDef> Actions </th>
             <td mat-cell *matCellDef="let user">
-              <button mat-icon-button color="primary" matTooltip="Réinitialiser le mot de passe" (click)="resetPassword(user)">
+              <button *ngIf="isClients" mat-icon-button color="primary" matTooltip="Voir la fiche" (click)="openFiche(user, $event)">
+                <mat-icon>badge</mat-icon>
+              </button>
+              <button mat-icon-button color="primary" matTooltip="Réinitialiser le mot de passe" (click)="$event.stopPropagation(); resetPassword(user)">
                 <mat-icon>key</mat-icon>
               </button>
               <button mat-icon-button color="warn" matTooltip="Supprimer" (click)="deleteUser(user)">
@@ -210,7 +210,7 @@ export class ResetPasswordDialogComponent {
 
         <div class="empty-state" *ngIf="filteredUsers.length === 0">
           <mat-icon>group_off</mat-icon>
-          <p>Aucun utilisateur ne correspond à votre recherche.</p>
+          <p>Aucun {{ isClients ? 'client' : 'employé' }} ne correspond à votre recherche.</p>
         </div>
 
         <app-pagination [pageIndex]="pageIndex" [pageSize]="pageSize" [totalItems]="filteredUsers.length"
@@ -225,10 +225,7 @@ export class ResetPasswordDialogComponent {
     .header p { color: #666; font-weight: 300; }
 
     .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; gap: 20px; flex-wrap: wrap; }
-    .tabs { display: flex; gap: 8px; }
     .search-field { flex: 1; min-width: 220px; }
-    .tab { padding: 9px 18px; border: 1px solid var(--luxe-border); background: white; border-radius: 30px; font-size: 0.8rem; font-weight: 500; color: var(--luxe-charcoal); cursor: pointer; transition: var(--transition-smooth); }
-    .tab.active { background: var(--luxe-black); color: var(--luxe-white); border-color: var(--luxe-black); }
 
     .create-form { background: white; border: 1px solid var(--luxe-border); border-radius: 12px; padding: 25px; margin-bottom: 25px; }
     .create-form h3 { margin: 0 0 18px; font-size: 1.1rem; font-weight: 600; }
@@ -240,6 +237,7 @@ export class ResetPasswordDialogComponent {
     td.mat-cell { padding: 14px 20px; color: #444; font-weight: 300; }
 
     .user-info { display: flex; align-items: center; gap: 12px; }
+    .user-info.clickable { cursor: pointer; }
     .avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--luxe-offwhite); display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 700; color: var(--luxe-charcoal); }
     .user-info > div:last-child { display: flex; flex-direction: column; }
     .user-info span { font-weight: 500; color: var(--luxe-black); }
@@ -253,16 +251,21 @@ export class ResetPasswordDialogComponent {
     @media (max-width: 768px) {
       .header h2 { font-size: 1.8rem; }
       .search-field { width: 100%; min-width: 0; }
-      .tabs { width: 100%; overflow-x: auto; }
     }
   `]
 })
 export class UsersManagerComponent implements OnInit {
   users: any[] = [];
   filteredUsers: any[] = [];
-  filter: 'all' | 'client' | 'employee' = 'all';
+  filter: 'client' | 'employee' = 'client';
   showForm = false;
-  displayedColumns: string[] = ['username', 'role', 'group', 'points', 'created', 'actions'];
+
+  get isClients(): boolean { return this.filter === 'client'; }
+  get displayedColumns(): string[] {
+    return this.isClients
+      ? ['username', 'points', 'created', 'actions']
+      : ['username', 'role', 'group', 'created', 'actions'];
+  }
 
   newUser: any = { first_name: '', last_name: '', email: '', password: '', role: 'client', permission_group_id: 'seller' };
   staffGroups: PermissionGroup[] = [];
@@ -277,9 +280,19 @@ export class UsersManagerComponent implements OnInit {
   resetPage() { this.pageIndex = 0; }
   onPageChange(index: number) { this.pageIndex = index; }
 
-  constructor(private crud: CrudService, private snackBar: MatSnackBar, private dialog: MatDialog, private settings: SettingsService) {}
+  constructor(
+    private crud: CrudService,
+    private snackBar: MatSnackBar,
+    private dialog: MatDialog,
+    private settings: SettingsService,
+    private confirm: ConfirmService,
+    private route: ActivatedRoute,
+    private router: Router
+  ) {}
 
   ngOnInit() {
+    this.filter = this.route.snapshot.data['mode'] === 'employee' ? 'employee' : 'client';
+    this.newUser.role = this.isClients ? 'client' : 'seller';
     this.loadUsers();
     this.settings.loadAccess().then((access) => {
       this.staffGroups = (access.groups || []).filter((g) => g.id !== 'admin');
@@ -310,13 +323,10 @@ export class UsersManagerComponent implements OnInit {
     });
   }
 
-  get allCount() { return this.users.length; }
-  get clientCount() { return this.users.filter(u => u.role === 'client').length; }
-  get employeeCount() { return this.users.filter(u => u.role === 'seller' || u.role === 'admin').length; }
-
-  setFilter(filter: 'all' | 'client' | 'employee') {
-    this.filter = filter;
-    this.applyFilter();
+  openFiche(user: any, event?: Event) {
+    if (!this.isClients) return;
+    event?.stopPropagation();
+    this.router.navigate(['/admin/clients', user.id]);
   }
 
   applyFilter() {
@@ -346,7 +356,7 @@ export class UsersManagerComponent implements OnInit {
       next: () => {
         this.snackBar.open('Compte créé avec succès', 'OK', { duration: 3000 });
         this.showForm = false;
-        this.newUser = { first_name: '', last_name: '', email: '', password: '', role: 'client', permission_group_id: 'seller' };
+        this.newUser = { first_name: '', last_name: '', email: '', password: '', role: this.isClients ? 'client' : 'seller', permission_group_id: 'seller' };
         this.loadUsers();
       },
       error: () => this.snackBar.open('Erreur lors de la création du compte', 'Fermer', { duration: 4000 })
@@ -379,8 +389,14 @@ export class UsersManagerComponent implements OnInit {
     });
   }
 
-  deleteUser(user: any) {
-    if (!confirm(`Supprimer le compte de ${user.first_name} ${user.last_name} ?`)) return;
+  async deleteUser(user: any) {
+    const ok = await this.confirm.ask({
+      danger: true,
+      title: 'Supprimer ce compte ?',
+      message: `Le compte de ${user.first_name} ${user.last_name} sera définitivement retiré.`,
+      confirmLabel: 'Supprimer'
+    });
+    if (!ok) return;
     this.crud.delete('users', user.id).subscribe({
       next: () => {
         this.snackBar.open('Compte supprimé', 'OK', { duration: 3000 });

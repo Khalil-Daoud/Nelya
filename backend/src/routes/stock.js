@@ -1,6 +1,7 @@
 const express = require('express');
 const { auth, authorize, requirePermission } = require('../middlewares/auth');
 const { Product, sequelize } = require('../models');
+const audit = require('../services/auditService');
 
 const router = express.Router();
 const MAX_STOCK = 100000;
@@ -72,6 +73,13 @@ router.patch('/:id/stock', auth, authorize('admin', 'seller'), requirePermission
     });
 
     if (!updated) return res.status(404).json({ message: 'Produit introuvable' });
+    audit.log({
+      req,
+      action: 'stock.adjust',
+      entity: 'stock',
+      entityId: updated.id,
+      summary: `a ajusté le stock de « ${updated.name} » à ${updated.stock}`
+    });
     res.json(updated);
   } catch (error) {
     return res.status(400).json({ message: error.message || 'Impossible de mettre à jour le stock' });

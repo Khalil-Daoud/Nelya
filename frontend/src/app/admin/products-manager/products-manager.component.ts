@@ -17,6 +17,7 @@ import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } 
 import { ImageUrlPipe } from '../../pipes/image-url.pipe';
 import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
 import { PaginationComponent } from '../../components/pagination/pagination.component';
+import { ConfirmService } from '../../services/confirm.service';
 
 interface StockSummary {
   skuCount: number;
@@ -432,7 +433,8 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
     private crud: CrudService,
     private api: ApiService,
     private snackBar: MatSnackBar,
-    private fb: FormBuilder
+    private fb: FormBuilder,
+    private confirm: ConfirmService
   ) {}
 
   ngOnInit() {
@@ -688,18 +690,23 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
     }
   }
 
-  deleteProduct(id: string) {
-    if (confirm('Voulez-vous vraiment supprimer ce produit ?')) {
-      this.crud.delete('products', id).subscribe({
-        next: () => {
-          this.snackBar.open('Produit supprimé', 'OK', { duration: 3000 });
-          this.loadProducts();
-          this.loadSummary();
-        },
-        error: () => {
-          this.snackBar.open('Erreur lors de la suppression du produit', 'Fermer', { duration: 3000 });
-        }
-      });
-    }
+  async deleteProduct(id: string) {
+    const ok = await this.confirm.ask({
+      danger: true,
+      title: 'Supprimer ce produit ?',
+      message: 'La fiche disparaîtra du catalogue. Cette action est définitive.',
+      confirmLabel: 'Supprimer'
+    });
+    if (!ok) return;
+    this.crud.delete('products', id).subscribe({
+      next: () => {
+        this.snackBar.open('Produit supprimé', 'OK', { duration: 3000 });
+        this.loadProducts();
+        this.loadSummary();
+      },
+      error: () => {
+        this.snackBar.open('Erreur lors de la suppression du produit', 'Fermer', { duration: 3000 });
+      }
+    });
   }
 }

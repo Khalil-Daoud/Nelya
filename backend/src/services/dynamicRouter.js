@@ -3,6 +3,18 @@ const BaseService = require('./BaseService');
 const models = require('../models');
 const { auth, optionalAuth, authorize, requirePermission } = require('../middlewares/auth');
 const { buildListQuery } = require('./listQuery');
+const audit = require('./auditService');
+
+const ENTITY_BY_MODEL = { Product: 'product', Category: 'category', User: 'user' };
+
+function recordLabel(modelName, row) {
+  if (!row) return '';
+  const json = typeof row.toJSON === 'function' ? row.toJSON() : row;
+  if (modelName === 'Product') return json.name || json.reference || json.id;
+  if (modelName === 'Category') return json.name || json.id;
+  if (modelName === 'User') return `${json.first_name || ''} ${json.last_name || ''}`.trim() || json.email || json.id;
+  return json.id;
+}
 
 // [SEC-FIX] Configuration par modèle : contrôle fin de ce qui est lisible/écrivable.
 // searchFields / filterFields / rangeFields / sortFields font aussi office de liste
@@ -156,6 +168,16 @@ function createDynamicRouter(modelName) {
       const data = getWriteBody(req, res);
       if (data === null) return;
       const created = await service.create(data);
+      const entity = ENTITY_BY_MODEL[modelName];
+      if (entity) {
+        audit.log({
+          req,
+          action: `${entity}.create`,
+          entity,
+          entityId: created.id,
+          summary: `a créé ${entity === 'user' ? 'le compte' : entity === 'category' ? 'la catégorie' : 'le produit'} « ${recordLabel(modelName, created)} »`
+        });
+      }
       res.status(201).json(sanitize(modelName, created, req));
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -170,6 +192,19 @@ function createDynamicRouter(modelName) {
       const updated = await service.update(req.params.id, data);
       if (!updated) return res.status(404).json({ message: 'Not found' });
       const fresh = await service.getById(req.params.id, getReadOptions(req));
+      const entity = ENTITY_BY_MODEL[modelName];
+      if (entity) {
+        const passwordOnly = entity === 'user' && Object.keys(data).length === 1 && 'password' in data;
+        audit.log({
+          req,
+          action: passwordOnly ? 'user.password' : `${entity}.update`,
+          entity,
+          entityId: req.params.id,
+          summary: passwordOnly
+            ? `a réinitialisé le mot de passe de « ${recordLabel(modelName, fresh)} »`
+            : `a modifié ${entity === 'user' ? 'le compte' : entity === 'category' ? 'la catégorie' : 'le produit'} « ${recordLabel(modelName, fresh)} »`
+        });
+      }
       res.json(sanitize(modelName, fresh, req));
     } catch (error) {
       res.status(400).json({ error: error.message });
@@ -179,8 +214,19 @@ function createDynamicRouter(modelName) {
   // [BUG-003 FIX] Suppression : authentifié + rôle admin uniquement
   router.delete('/:id', auth, authorize('admin'), async (req, res) => {
     try {
+      const existing = await service.getById(req.params.id);
       const deleted = await service.delete(req.params.id);
       if (!deleted) return res.status(404).json({ message: 'Not found' });
+      const entity = ENTITY_BY_MODEL[modelName];
+      if (entity) {
+        audit.log({
+          req,
+          action: `${entity}.delete`,
+          entity,
+          entityId: req.params.id,
+          summary: `a supprimé ${entity === 'user' ? 'le compte' : entity === 'category' ? 'la catégorie' : 'le produit'} « ${recordLabel(modelName, existing)} »`
+        });
+      }
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: error.message });

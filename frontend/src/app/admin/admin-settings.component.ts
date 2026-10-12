@@ -14,6 +14,13 @@ import { SettingsService, Currency, WhatsAppSettings, LoyaltyTier, DEFAULT_LOYAL
 import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
 import { ImageUrlPipe } from '../pipes/image-url.pipe';
 import { ApiService } from '../services/api.service';
+import { ConfirmService } from '../services/confirm.service';
+
+type SettingsFold = 'hero' | 'currency' | 'checkout' | 'whatsapp' | 'loyalty' | 'perms';
+const FOLDS_KEY = 'nelya_settings_folds_v2';
+const DEFAULT_FOLDS: Record<SettingsFold, boolean> = {
+  perms: false, hero: false, currency: false, checkout: false, whatsapp: false, loyalty: false
+};
 
 @Component({
   selector: 'app-admin-settings',
@@ -25,16 +32,20 @@ import { ApiService } from '../services/api.service';
   ],
   template: `
     <div class="settings-page fade-in">
-      <p class="lead">Image d’accueil, devise, commande, fidélité, WhatsApp et groupes de permissions.</p>
+      <p class="lead">Image d’accueil, devise, commande, fidélité, WhatsApp et groupes de permissions. Cliquez un titre pour masquer une carte.</p>
 
-      <section class="perms">
-        <header class="panel-head">
-          <h2>Table des permissions</h2>
-          <p>
-            Cochez ce que chaque groupe a le droit de faire.
-            Les administrateurs ont toujours tout. Assignez un groupe à un employé dans <strong>Clients &amp; Employés</strong>.
-          </p>
-        </header>
+      <div class="cards">
+
+      <article class="card" [class.open]="isOpen('perms')" [class.wide]="true">
+        <button type="button" class="card-head" (click)="toggle('perms')">
+          <span class="card-icon"><mat-icon>admin_panel_settings</mat-icon></span>
+          <span class="card-titles">
+            <h2>Permissions</h2>
+            <p>Droits de chaque groupe. Les administrateurs ont toujours tout.</p>
+          </span>
+          <mat-icon class="chevron">expand_more</mat-icon>
+        </button>
+        <div class="card-body" *ngIf="isOpen('perms')">
 
         <div class="perm-create">
           <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -88,17 +99,19 @@ import { ApiService } from '../services/api.service';
         <button mat-flat-button color="primary" class="save-btn" [disabled]="savingPerms" (click)="savePermissionGroups()">
           Enregistrer les groupes
         </button>
-      </section>
+        </div>
+      </article>
 
-      <div class="layout">
-
-        <!-- Colonne gauche : boutique -->
-        <div class="stack">
-          <section class="panel">
-            <header class="panel-head">
-              <h2>Page d’accueil</h2>
-              <p>Photo du bandeau plein écran. Format paysage, idéalement 2000 × 1200 px.</p>
-            </header>
+          <article class="card" [class.open]="isOpen('hero')">
+            <button type="button" class="card-head" (click)="toggle('hero')">
+              <span class="card-icon"><mat-icon>image</mat-icon></span>
+              <span class="card-titles">
+                <h2>Page d’accueil</h2>
+                <p>Bandeau plein écran, idéalement 2000 × 1200 px.</p>
+              </span>
+              <mat-icon class="chevron">expand_more</mat-icon>
+            </button>
+            <div class="card-body" *ngIf="isOpen('hero')">
 
             <div class="hero-preview">
               <img *ngIf="heroImage" [src]="heroImage | imageUrl" alt="Aperçu de l’accueil">
@@ -116,13 +129,19 @@ import { ApiService } from '../services/api.service';
                 Image par défaut
               </button>
             </div>
-          </section>
+            </div>
+          </article>
 
-          <section class="panel">
-            <header class="panel-head">
-              <h2>Devise</h2>
-              <p>Les montants restent les mêmes, seul le symbole change.</p>
-            </header>
+          <article class="card" [class.open]="isOpen('currency')">
+            <button type="button" class="card-head" (click)="toggle('currency')">
+              <span class="card-icon"><mat-icon>payments</mat-icon></span>
+              <span class="card-titles">
+                <h2>Devise</h2>
+                <p>Les montants restent les mêmes, seul le symbole change.</p>
+              </span>
+              <mat-icon class="chevron">expand_more</mat-icon>
+            </button>
+            <div class="card-body" *ngIf="isOpen('currency')">
 
             <mat-radio-group [(ngModel)]="selected" class="currency-list">
               <mat-radio-button *ngFor="let c of currencies" [value]="c.code" class="currency-option">
@@ -141,13 +160,19 @@ import { ApiService } from '../services/api.service';
               [disabled]="selected === current?.code || saving" (click)="save()">
               Enregistrer la devise
             </button>
-          </section>
+            </div>
+          </article>
 
-          <section class="panel">
-            <header class="panel-head">
-              <h2>Commande</h2>
-              <p>Qui a le droit de valider un panier. Toute commande est enregistrée en « En attente » jusqu’à ce que vous changiez le statut.</p>
-            </header>
+          <article class="card wide" [class.open]="isOpen('checkout')">
+            <button type="button" class="card-head" (click)="toggle('checkout')">
+              <span class="card-icon"><mat-icon>shopping_bag</mat-icon></span>
+              <span class="card-titles">
+                <h2>Commande</h2>
+                <p>Compte obligatoire ou invité, et champs du formulaire.</p>
+              </span>
+              <mat-icon class="chevron">expand_more</mat-icon>
+            </button>
+            <div class="card-body" *ngIf="isOpen('checkout')">
 
             <div class="choice-list">
               <button type="button" class="choice" [class.on]="!guestCheckout" [disabled]="savingGuest"
@@ -209,16 +234,19 @@ import { ApiService } from '../services/api.service';
             <button mat-flat-button color="primary" class="save-btn" [disabled]="savingFields" (click)="saveCheckoutFields()">
               Enregistrer les champs
             </button>
-          </section>
-
-          <section class="whatsapp">
-            <div class="wa-banner">
-              <mat-icon>chat</mat-icon>
-              <div>
-                <h2>WhatsApp</h2>
-                <p>Le numéro de la boutique, et l’envoi de confirmation au client.</p>
-              </div>
             </div>
+          </article>
+
+          <article class="card wide" [class.open]="isOpen('whatsapp')">
+            <button type="button" class="card-head" (click)="toggle('whatsapp')">
+              <span class="card-icon wa"><mat-icon>chat</mat-icon></span>
+              <span class="card-titles">
+                <h2>WhatsApp</h2>
+                <p>Numéro boutique et envoi de confirmation au client.</p>
+              </span>
+              <mat-icon class="chevron">expand_more</mat-icon>
+            </button>
+            <div class="card-body wa-pad" *ngIf="isOpen('whatsapp')">
 
             <div class="wa-body">
               <div class="wa-col">
@@ -284,25 +312,25 @@ import { ApiService } from '../services/api.service';
                 </button>
               </div>
             </div>
-          </section>
-        </div>
+            </div>
+          </article>
 
-        <!-- Fidélité : autre langage visuel, table + résumé -->
-        <section class="loyalty">
-          <div class="loyalty-intro">
-            <span class="eyebrow">Programme</span>
-            <h2>Points fidélité</h2>
-            <p>
-              Un client connecté gagne des points selon le <em>prix unitaire</em> × la quantité.
-              Les invités n’en reçoivent pas.
-            </p>
-            <div class="chips">
+        <article class="card wide" [class.open]="isOpen('loyalty')">
+          <button type="button" class="card-head" (click)="toggle('loyalty')">
+            <span class="card-icon"><mat-icon>loyalty</mat-icon></span>
+            <span class="card-titles">
+              <h2>Points fidélité</h2>
+              <p>Un client connecté gagne des points selon le prix unitaire × la quantité. Les invités n’en reçoivent pas.</p>
+            </span>
+            <mat-icon class="chevron">expand_more</mat-icon>
+          </button>
+          <div class="card-body" *ngIf="isOpen('loyalty')">
+            <div class="chips light">
               <span class="chip" *ngFor="let t of loyaltyTiers">
                 {{ t.min }}–{{ t.max }} {{ currencySymbol }}
                 <b>{{ t.points }} pts</b>
               </span>
             </div>
-          </div>
 
           <div class="loyalty-editor">
             <p class="rule">Le premier palier qui contient le prix s’applique (minimum inclus).</p>
@@ -338,7 +366,8 @@ import { ApiService } from '../services/api.service';
               </button>
             </div>
           </div>
-        </section>
+          </div>
+        </article>
 
       </div>
     </div>
@@ -347,30 +376,60 @@ import { ApiService } from '../services/api.service';
     .settings-page { padding: 0 0 32px; width: 100%; min-width: 0; }
     .lead { margin: 0 0 28px; color: var(--luxe-text-muted); font-weight: 300; font-size: 0.95rem; }
 
-    .layout {
+    .cards {
       display: grid;
-      grid-template-columns: minmax(280px, 1fr) minmax(360px, 1fr);
-      gap: 22px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
       align-items: start;
     }
-    .stack { display: flex; flex-direction: column; gap: 22px; }
-
-    .panel, .loyalty, .whatsapp {
+    .card {
       background: var(--luxe-white);
       border: 1px solid var(--luxe-border);
       border-radius: 16px;
       box-shadow: var(--shadow-subtle);
+      overflow: hidden;
+      min-width: 0;
     }
-    .panel { padding: 24px; display: flex; flex-direction: column; }
-    .panel-head h2, .loyalty-intro h2, .wa-banner h2, .wa-col h3 {
-      margin: 0 0 6px; font-family: var(--font-heading); font-weight: 500; color: var(--luxe-black);
+    .card.wide { grid-column: 1 / -1; }
+    .card-head {
+      width: 100%; display: flex; align-items: center; gap: 14px;
+      padding: 16px 18px; border: none; background: var(--luxe-white);
+      cursor: pointer; text-align: left; font-family: inherit;
+      border-bottom: 1px solid transparent;
     }
-    .panel-head h2 { font-size: 1.35rem; }
-    .panel-head p, .loyalty-intro p, .wa-banner p, .wa-col p {
-      margin: 0; font-size: 0.82rem; font-weight: 300; color: var(--luxe-text-muted); line-height: 1.55;
+    .card.open .card-head { border-bottom-color: var(--luxe-border); background: #faf9f6; }
+    .card-head:hover { background: #faf9f6; }
+    .card-icon {
+      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--luxe-offwhite); color: var(--luxe-gold);
+    }
+    .card-icon.wa { background: #ecf8ef; color: #25D366; }
+    .card-icon mat-icon { font-size: 22px; width: 22px; height: 22px; }
+    .card-titles { flex: 1; min-width: 0; }
+    .card-titles h2 {
+      margin: 0; font-family: var(--font-heading); font-weight: 500;
+      font-size: 1.15rem; color: var(--luxe-black);
+    }
+    .card-titles p {
+      margin: 4px 0 0; font-size: 0.8rem; font-weight: 300;
+      color: var(--luxe-text-muted); line-height: 1.4;
+    }
+    .chevron {
+      color: var(--luxe-text-muted); transition: transform 0.2s ease; flex-shrink: 0;
+    }
+    .card.open .chevron { transform: rotate(180deg); color: var(--luxe-gold); }
+    .card-body { padding: 20px 22px 22px; display: flex; flex-direction: column; }
+    .card-body.wa-pad { padding: 0; }
+    .wa-col h3 {
+      margin: 0 0 10px; font-family: var(--font-heading); font-weight: 500; color: var(--luxe-black);
+      font-size: 0.78rem; letter-spacing: 1.4px; text-transform: uppercase;
+    }
+    .wa-col p {
+      margin: 0 0 16px; font-size: 0.82rem; font-weight: 300; color: var(--luxe-text-muted); line-height: 1.55;
     }
 
-    .currency-list { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 16px; }
+    .currency-list { display: flex; flex-direction: column; gap: 8px; margin: 0 0 16px; }
     .currency-option {
       display: flex; align-items: center; padding: 12px 14px;
       border: 1px solid var(--luxe-border); border-radius: 10px; margin: 0;
@@ -387,7 +446,7 @@ import { ApiService } from '../services/api.service';
     .preview strong { font-family: var(--font-heading); font-size: 1.25rem; }
     .save-btn { align-self: stretch; }
     .hero-preview {
-      margin: 16px 0 14px; border-radius: 12px; overflow: hidden;
+      margin: 0 0 14px; border-radius: 12px; overflow: hidden;
       border: 1px solid var(--luxe-border); background: var(--luxe-offwhite);
       aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center;
     }
@@ -395,7 +454,7 @@ import { ApiService } from '../services/api.service';
     .hero-preview span { color: var(--luxe-text-muted); font-size: 0.85rem; }
     .hero-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-    .choice-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+    .choice-list { display: flex; flex-direction: column; gap: 10px; margin-top: 0; }
     .choice {
       display: flex; align-items: center; gap: 14px; text-align: left;
       padding: 14px 16px; border-radius: 12px; cursor: pointer;
@@ -425,29 +484,16 @@ import { ApiService } from '../services/api.service';
     .field-add { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 16px; }
     .field-add .type-pick { width: 140px; }
 
-    .loyalty { display: flex; flex-direction: column; overflow: hidden; }
-    .loyalty-intro {
-      padding: 26px 26px 20px;
-      background: linear-gradient(160deg, #1a1a1a 0%, #2c2c2c 100%);
-      color: #fff;
-    }
-    .eyebrow {
-      display: inline-block; font-size: 0.68rem; letter-spacing: 2.5px; text-transform: uppercase;
-      color: var(--luxe-gold); font-weight: 600; margin-bottom: 8px;
-    }
-    .loyalty-intro h2 { color: #fff; font-size: 1.55rem; }
-    .loyalty-intro p { color: rgba(255,255,255,0.72); margin-top: 8px; }
-    .loyalty-intro em { font-style: normal; color: var(--luxe-gold); }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
     .chip {
       display: inline-flex; align-items: center; gap: 8px;
       padding: 6px 12px; border-radius: 999px;
-      background: rgba(255,255,255,0.08); border: 1px solid rgba(212,175,55,0.35);
-      font-size: 0.78rem; color: rgba(255,255,255,0.85);
+      background: var(--luxe-offwhite); border: 1px solid var(--luxe-border);
+      font-size: 0.78rem; color: var(--luxe-charcoal);
     }
-    .chip b { color: var(--luxe-gold); font-weight: 700; }
+    .chip b { color: var(--luxe-black); font-weight: 700; }
 
-    .loyalty-editor { padding: 18px 22px 22px; }
+    .loyalty-editor { padding: 0; }
     .rule { margin: 0 0 14px; font-size: 0.78rem; color: var(--luxe-text-muted); font-weight: 300; }
     .tier {
       display: flex; align-items: center; gap: 10px;
@@ -477,17 +523,10 @@ import { ApiService } from '../services/api.service';
     .icon-btn mat-icon { font-size: 18px; width: 18px; height: 18px; }
     .loyalty-bar { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
 
-    .wa-banner {
-      display: flex; gap: 14px; align-items: center;
-      padding: 20px 26px; background: #ecf8ef; border-bottom: 1px solid #cfeedd;
-    }
-    .wa-banner mat-icon { font-size: 28px; width: 28px; height: 28px; color: #25D366; }
-    .wa-banner h2 { font-size: 1.35rem; }
     .wa-body { display: flex; flex-direction: column; }
     .wa-col { padding: 18px 22px 20px; }
     .wa-col-confirm { border-top: 1px solid var(--luxe-border); }
     .wa-col h3 { font-size: 0.78rem; letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 10px; }
-    .wa-col p { margin-bottom: 16px; }
     .wa-col mat-checkbox { display: block; margin: 4px 0 14px; }
     .full { width: 100%; }
     .pill {
@@ -501,12 +540,7 @@ import { ApiService } from '../services/api.service';
     .phone-prefix { font-weight: 600; padding-right: 6px; }
     code { background: var(--luxe-offwhite); border: 1px solid var(--luxe-border); border-radius: 4px; padding: 1px 5px; font-size: 0.75rem; }
 
-    .perms {
-      margin: 0 0 22px; padding: 24px;
-      background: var(--luxe-white); border: 1px solid var(--luxe-border);
-      border-radius: 16px; box-shadow: var(--shadow-subtle);
-    }
-    .perm-create { display: flex; gap: 12px; align-items: center; margin: 18px 0 16px; flex-wrap: wrap; }
+    .perm-create { display: flex; gap: 12px; align-items: center; margin: 0 0 16px; flex-wrap: wrap; }
     .perm-create mat-form-field { min-width: 240px; flex: 1; max-width: 360px; }
     .perm-table-wrap { overflow-x: auto; border: 1px solid var(--luxe-border); border-radius: 10px; background: #fff; }
     .perm-table { width: 100%; min-width: 560px; border-collapse: collapse; }
@@ -535,7 +569,7 @@ import { ApiService } from '../services/api.service';
     .perm-locked { color: var(--luxe-gold); font-size: 22px; width: 22px; height: 22px; }
 
     @media (max-width: 960px) {
-      .layout { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: 1fr; }
     }
     @media (max-width: 600px) {
       .settings-page { padding: 0 0 32px; }
@@ -580,11 +614,13 @@ export class AdminSettingsComponent implements OnInit {
     { key: 'orders.cancel', section: 'Commandes', label: 'Annuler une commande' },
     { key: 'products.manage', section: 'Catalogue', label: 'Créer et modifier les produits' },
     { key: 'stock.manage', section: 'Catalogue', label: 'Ajuster le stock' },
-    { key: 'categories.manage', section: 'Catalogue', label: 'Gérer les catégories' }
+    { key: 'categories.manage', section: 'Catalogue', label: 'Gérer les catégories' },
+    { key: 'reviews.manage', section: 'Avis', label: 'Gérer les avis et témoignages' },
+    { key: 'audit.view', section: 'Historique', label: 'Consulter l’historique des actions' }
   ];
   permissionGroups: PermissionGroup[] = [
     { id: 'admin', name: 'Administrateur', system: true, permissions: ['*'] },
-    { id: 'seller', name: 'Employé', system: true, permissions: ['orders.update_status', 'orders.cancel', 'products.manage', 'stock.manage', 'categories.manage'] }
+    { id: 'seller', name: 'Employé', system: true, permissions: ['orders.update_status', 'orders.cancel', 'products.manage', 'stock.manage', 'categories.manage', 'reviews.manage'] }
   ];
   newGroupName = '';
   savingPerms = false;
@@ -593,11 +629,13 @@ export class AdminSettingsComponent implements OnInit {
   readonly defaultHeroImage = DEFAULT_HERO_IMAGE;
   uploadingHero = false;
   savingHero = false;
+  folds: Record<SettingsFold, boolean> = { ...DEFAULT_FOLDS };
 
   constructor(
     private settings: SettingsService,
     private snackBar: MatSnackBar,
-    private api: ApiService
+    private api: ApiService,
+    private confirm: ConfirmService
   ) {}
 
   get currencySymbol(): string {
@@ -605,6 +643,7 @@ export class AdminSettingsComponent implements OnInit {
   }
 
   ngOnInit() {
+    this.restoreFolds();
     this.settings.currency$.subscribe((c: Currency) => {
       this.current = c;
       this.selected = c.code;
@@ -644,6 +683,22 @@ export class AdminSettingsComponent implements OnInit {
     }).catch(() => {});
   }
 
+  isOpen(id: SettingsFold): boolean {
+    return this.folds[id] !== false;
+  }
+
+  toggle(id: SettingsFold) {
+    this.folds = { ...this.folds, [id]: !this.isOpen(id) };
+    localStorage.setItem(FOLDS_KEY, JSON.stringify(this.folds));
+  }
+
+  private restoreFolds() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(FOLDS_KEY) || '');
+      if (raw && typeof raw === 'object') this.folds = { ...DEFAULT_FOLDS, ...raw };
+    } catch { /* ignore */ }
+  }
+
   get permissionSections(): string[] {
     return [...new Set(this.permissionCatalog.map((p) => p.section))];
   }
@@ -679,9 +734,15 @@ export class AdminSettingsComponent implements OnInit {
     this.savePermissionGroups(`Groupe « ${name} » créé`);
   }
 
-  removeGroup(group: PermissionGroup) {
+  async removeGroup(group: PermissionGroup) {
     if (group.system || this.savingPerms) return;
-    if (!confirm(`Supprimer le groupe « ${group.name} » ? Les employés concernés repasseront sur Employé.`)) return;
+    const ok = await this.confirm.ask({
+      danger: true,
+      title: `Supprimer « ${group.name} » ?`,
+      message: 'Les employés de ce groupe repasseront sur Employé.',
+      confirmLabel: 'Supprimer'
+    });
+    if (!ok) return;
     const previous = this.permissionGroups;
     this.permissionGroups = this.permissionGroups.filter((g) => g.id !== group.id);
     this.savePermissionGroups(`Groupe « ${group.name} » supprimé`, previous);

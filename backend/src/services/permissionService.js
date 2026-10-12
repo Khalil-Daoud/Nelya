@@ -11,10 +11,20 @@ const PERMISSION_CATALOG = [
   { key: 'orders.cancel', section: 'Commandes', label: 'Annuler une commande' },
   { key: 'products.manage', section: 'Catalogue', label: 'Créer et modifier les produits' },
   { key: 'stock.manage', section: 'Catalogue', label: 'Ajuster le stock' },
-  { key: 'categories.manage', section: 'Catalogue', label: 'Gérer les catégories' }
+  { key: 'categories.manage', section: 'Catalogue', label: 'Gérer les catégories' },
+  { key: 'reviews.manage', section: 'Avis', label: 'Gérer les avis et témoignages' },
+  { key: 'audit.view', section: 'Historique', label: 'Consulter l’historique des actions' }
 ];
 
 const ALLOWED_KEYS = new Set(PERMISSION_CATALOG.map((p) => p.key));
+const SELLER_DEFAULT_PERMISSIONS = [
+  'orders.update_status',
+  'orders.cancel',
+  'products.manage',
+  'stock.manage',
+  'categories.manage',
+  'reviews.manage'
+];
 
 function defaultGroups() {
   return [
@@ -28,7 +38,7 @@ function defaultGroups() {
       id: SELLER_GROUP_ID,
       name: 'Employé',
       system: true,
-      permissions: [...ALLOWED_KEYS]
+      permissions: [...SELLER_DEFAULT_PERMISSIONS]
     }
   ];
 }

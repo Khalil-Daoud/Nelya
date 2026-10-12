@@ -63,13 +63,16 @@ app.use('/api/products', require('./routes/stock'));
 // Routes Dynamiques
 app.use('/api/products', createDynamicRouter('Product'));
 app.use('/api/categories', createDynamicRouter('Category'));
+app.use('/api/users', require('./routes/userFiche'));
 app.use('/api/users', createDynamicRouter('User'));
+app.use('/api/reviews', require('./routes/reviews'));
 
 // [SEC-FIX] Route commandes dédiée (calcul serveur du total, items, accès client)
 app.use('/api/orders', require('./routes/orders'));
 
 // Paramètres boutique (devise)
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/audit', require('./routes/audit'));
 
 // Auth Routes (à implémenter si séparées)
 const authController = require('./controllers/AuthController');

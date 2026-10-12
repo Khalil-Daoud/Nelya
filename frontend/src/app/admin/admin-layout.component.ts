@@ -46,13 +46,25 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
             <mat-icon>category</mat-icon>
             <span>Catégories</span>
           </a>
-          <a routerLink="/admin/users" routerLinkActive="active" class="nav-item" *ngIf="isAdmin" matTooltip="Clients & Employés" matTooltipPosition="right">
+          <a routerLink="/admin/reviews" routerLinkActive="active" class="nav-item" *ngIf="canManageReviews" matTooltip="Avis" matTooltipPosition="right">
+            <mat-icon>rate_review</mat-icon>
+            <span>Avis</span>
+          </a>
+          <a routerLink="/admin/clients" routerLinkActive="active" class="nav-item" *ngIf="isAdmin" matTooltip="Clients" matTooltipPosition="right">
             <mat-icon>group</mat-icon>
-            <span>Clients & Employés</span>
+            <span>Clients</span>
+          </a>
+          <a routerLink="/admin/employees" routerLinkActive="active" class="nav-item" *ngIf="isAdmin" matTooltip="Employés" matTooltipPosition="right">
+            <mat-icon>badge</mat-icon>
+            <span>Employés</span>
           </a>
           <a routerLink="/admin/settings" routerLinkActive="active" class="nav-item" *ngIf="isAdmin" matTooltip="Paramètres" matTooltipPosition="right">
             <mat-icon>settings</mat-icon>
             <span>Paramètres</span>
+          </a>
+          <a routerLink="/admin/historique" routerLinkActive="active" class="nav-item" *ngIf="canViewAudit" matTooltip="Historique" matTooltipPosition="right">
+            <mat-icon>history</mat-icon>
+            <span>Historique</span>
           </a>
         </nav>
 
@@ -151,7 +163,16 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
     .brand-logo { display: block; font-family: var(--font-heading); font-size: 1.5rem; letter-spacing: 8px; color: var(--luxe-white); cursor: pointer; }
     .brand-sub { display: block; margin-top: 6px; font-size: 0.62rem; letter-spacing: 4px; color: var(--luxe-gold); font-weight: 600; }
 
-    .sidebar-nav { flex: 1; padding: 25px 15px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+    .sidebar-nav {
+      flex: 1; padding: 18px 12px; display: flex; flex-direction: column; gap: 4px;
+      overflow-x: hidden; overflow-y: auto; min-height: 0;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(198, 160, 74, 0.45) transparent;
+    }
+    .sidebar-nav::-webkit-scrollbar { width: 6px; }
+    .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(198, 160, 74, 0.38); border-radius: 99px; }
+    .sidebar-nav::-webkit-scrollbar-thumb:hover { background: var(--luxe-gold); }
     .nav-item {
       display: flex; align-items: center; gap: 15px; padding: 13px 18px; border-radius: var(--radius-sm);
       color: rgba(255,255,255,0.6); text-decoration: none; font-size: 0.85rem; letter-spacing: 1px;
@@ -315,15 +336,21 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   }
 
   get pageTitle(): string {
-    const seg = this.router.url.split('?')[0].split('/').filter(Boolean).pop() || 'dashboard';
+    const parts = this.router.url.split('?')[0].split('/').filter(Boolean);
+    if (parts.includes('clients') && parts.length > 2) return 'Fiche client';
+    const seg = parts.pop() || 'dashboard';
     const titles: any = {
       dashboard: 'Vue d\'ensemble',
       orders: 'Commandes',
       products: 'Produits',
       stock: 'Stock',
       categories: 'Catégories',
-      users: 'Clients & Employés',
-      settings: 'Paramètres'
+      reviews: 'Avis & témoignages',
+      clients: 'Clients',
+      employees: 'Employés',
+      users: 'Clients',
+      settings: 'Paramètres',
+      historique: 'Historique'
     };
     return titles[seg] || 'Espace administrateur';
   }
@@ -338,6 +365,14 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
 
   get userRole(): string {
     return this.user?.role === 'admin' ? 'Administrateur' : this.user?.role === 'seller' ? 'Employé' : 'Client';
+  }
+
+  get canViewAudit(): boolean {
+    return this.authService.hasPermission('audit.view');
+  }
+
+  get canManageReviews(): boolean {
+    return this.authService.hasPermission('reviews.manage');
   }
 
   logout() {

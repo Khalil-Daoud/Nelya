@@ -7,7 +7,8 @@ const whatsappService = require('../services/whatsappService');
 const settingsService = require('../services/settingsService');
 const loyaltyService = require('../services/loyaltyService');
 const orderNotify = require('../services/orderNotify');
-const { newPublicToken, isPublicToken, toPublicOrder, trackingUrl, parseExtraFields } = require('../utils/orderPublic');
+const { newPublicToken, isPublicToken, toPublicOrder, trackingUrl, parseExtraFields, orderReference } = require('../utils/orderPublic');
+const audit = require('../services/auditService');
 
 function withParsedExtra(order) {
   const json = typeof order?.toJSON === 'function' ? order.toJSON() : { ...order };
@@ -206,6 +207,13 @@ router.post('/', optionalAuth, guestOrderLimiter, async (req, res) => {
     const payload = withParsedExtra(fullOrder);
     payload.tracking_url = trackingUrl(fullOrder.public_token);
     payload.notified = notified;
+    audit.log({
+      req,
+      action: 'order.create',
+      entity: 'order',
+      entityId: fullOrder.id,
+      summary: `a passé la commande ${orderReference(fullOrder)} (${fullOrder.total_amount})`
+    });
     return res.status(201).json(payload);
   } catch (err) {
     return res.status(400).json({ message: err.message || 'Erreur lors de la création de la commande' });
@@ -267,13 +275,27 @@ router.put('/:id', auth, authorize('admin', 'seller'), async (req, res) => {
       if (nextStatus) {
         await order.update({ status: nextStatus }, { transaction: t });
       }
-      return { id: order.id, statusChanged: Boolean(nextStatus && nextStatus !== previousStatus) };
+      return {
+        id: order.id,
+        previousStatus,
+        nextStatus,
+        statusChanged: Boolean(nextStatus && nextStatus !== previousStatus)
+      };
     });
 
     if (!updated) return res.status(404).json({ message: 'Order not found' });
     const full = await Order.findByPk(updated.id, { include: orderIncludes(req.user) });
     if (updated.statusChanged) {
       orderNotify.notifyOrderStatus(full).catch(err => console.error('[Notify] status error', err));
+      const labels = { pending: 'En attente', confirmed: 'Confirmée', shipped: 'Expédiée', delivered: 'Livrée', cancelled: 'Annulée' };
+      audit.log({
+        req,
+        action: updated.nextStatus === 'cancelled' ? 'order.cancel' : 'order.status',
+        entity: 'order',
+        entityId: full.id,
+        summary: `a passé ${orderReference(full)} de « ${labels[updated.previousStatus] || updated.previousStatus} » à « ${labels[updated.nextStatus] || updated.nextStatus} »`,
+        meta: { from: updated.previousStatus, to: updated.nextStatus }
+      });
     }
     res.json(withParsedExtra(full));
   } catch (err) {

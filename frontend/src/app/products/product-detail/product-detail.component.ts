@@ -14,12 +14,8 @@ import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
 import { BreadcrumbComponent } from '../../components/breadcrumb/breadcrumb.component';
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
 import { SettingsService } from '../../services/settings.service';
-
-const REVIEWS = [
-  { name: 'Ines H.', role: 'Cliente vérifiée', text: 'Texture incroyable et parfum raffiné. Ma peau est visiblement plus lumineuse après quelques jours d’utilisation. Je recommande vivement !', date: 'Il y a 2 semaines' },
-  { name: 'Mariem B.', role: 'Cliente vérifiée', text: 'Le service est impeccable et le produit dépasse mes attentes. Un vrai soin de luxe accessible. Le rituel du soir est devenu mon moment préféré.', date: 'Il y a 1 mois' },
-  { name: 'Yasmine K.', role: 'Cliente vérifiée', text: 'J’ai offert ce soin à ma mère qui en est ravie. L’emballage est sublime, digne des plus grandes maisons. Livraison rapide en Tunisie.', date: 'Il y a 2 mois' }
-];
+import { ApiService } from '../../services/api.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-review-dialog',
@@ -38,7 +34,7 @@ const REVIEWS = [
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Annuler</button>
-      <button mat-flat-button color="primary" [disabled]="rating === 0 || !comment.trim()" (click)="submit()">Publier l'avis</button>
+      <button mat-flat-button color="primary" [disabled]="rating === 0 || comment.trim().length < 10" (click)="submit()">Publier l'avis</button>
     </mat-dialog-actions>
   `,
   styles: [`
@@ -107,8 +103,8 @@ export class ReviewDialogComponent {
             <span class="info-category">{{ product.category }}</span>
             <h1 class="info-title">{{ product.name }}</h1>
             <div class="info-rating">
-              <mat-icon *ngFor="let s of [1,2,3,4,5]">star</mat-icon>
-              <span>5.0 &middot; <button class="rating-link" (click)="scrollToReviews()">avis clients</button></span>
+              <mat-icon *ngFor="let s of [1,2,3,4,5]">{{ s <= reviewAverage ? 'star' : 'star_border' }}</mat-icon>
+              <span>{{ reviewCount ? (reviewAverage | number:'1.1-1') : '—' }} &middot; <button class="rating-link" (click)="scrollToReviews()">avis clients</button></span>
             </div>
             <p class="info-price">{{ product.price | formatCurrency }}</p>
             <p class="info-points" *ngIf="pointsForProduct > 0">
@@ -170,24 +166,27 @@ export class ReviewDialogComponent {
             <div>
               <span class="reviews-eyebrow">Avis clients</span>
               <h2>Ce qu'en pensent nos clientes</h2>
-              <div class="reviews-summary">
-                <span class="reviews-note">5.0</span>
-                <div class="reviews-stars"><mat-icon *ngFor="let s of [1,2,3,4,5]">star</mat-icon></div>
-                <span class="reviews-count">3 avis vérifiés</span>
+              <div class="reviews-summary" *ngIf="reviewCount">
+                <span class="reviews-note">{{ reviewAverage | number:'1.1-1' }}</span>
+                <div class="reviews-stars"><mat-icon *ngFor="let s of [1,2,3,4,5]">{{ s <= reviewAverage ? 'star' : 'star_border' }}</mat-icon></div>
+                <span class="reviews-count">{{ reviewCount }} avis vérifié{{ reviewCount > 1 ? 's' : '' }}</span>
               </div>
             </div>
             <button mat-stroked-button (click)="openReviewDialog()"><mat-icon>rate_review</mat-icon> ÉCRIRE UN AVIS</button>
           </div>
 
+          <p class="reviews-empty" *ngIf="!reviews.length">Aucun avis pour le moment. Soyez la première à partager votre expérience.</p>
           <div class="reviews-grid">
             <div class="review-card" *ngFor="let r of reviews">
-              <div class="review-stars"><mat-icon *ngFor="let s of [1,2,3,4,5]">star</mat-icon></div>
-              <p class="review-text">« {{ r.text }} »</p>
+              <div class="review-stars">
+                <mat-icon *ngFor="let s of [1,2,3,4,5]">{{ s <= r.rating ? 'star' : 'star_border' }}</mat-icon>
+              </div>
+              <p class="review-text">« {{ r.comment }} »</p>
               <div class="review-author">
-                <span class="review-avatar">{{ r.name[0] }}</span>
+                <span class="review-avatar">{{ r.authorInitial || r.author?.[0] }}</span>
                 <div>
-                  <strong>{{ r.name }}</strong>
-                  <span class="review-role">{{ r.role }} &middot; {{ r.date }}</span>
+                  <strong>{{ r.author }}</strong>
+                  <span class="review-role">Cliente vérifiée · {{ formatReviewDate(r.createdAt) }}</span>
                 </div>
               </div>
             </div>
@@ -356,6 +355,7 @@ export class ReviewDialogComponent {
     .reviews-stars, .review-stars { display: flex; gap: 3px; }
     .reviews-stars mat-icon, .review-stars mat-icon { font-size: 19px; width: 19px; height: 19px; color: var(--luxe-gold); }
     .reviews-count { color: var(--luxe-text-muted); font-size: 0.85rem; }
+    .reviews-empty { color: var(--luxe-text-muted); font-weight: 300; margin: 0 0 20px; }
     .reviews-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 30px; }
     .review-card { background: var(--luxe-white); border: 1px solid var(--luxe-border); border-radius: var(--radius-lg); padding: 30px; display: flex; flex-direction: column; gap: 18px; transition: box-shadow 0.3s ease, transform 0.3s ease; }
     .review-card:hover { box-shadow: var(--shadow-elevated); transform: translateY(-3px); }
@@ -423,7 +423,10 @@ export class ProductDetailComponent implements OnInit {
   zoomY = 50;
   lightboxOpen = false;
   loadError = false;
-  reviews = REVIEWS;
+  reviews: any[] = [];
+  reviewCount = 0;
+  reviewAverage = 0;
+  alreadyReviewed = false;
 
   constructor(
     private route: ActivatedRoute,
@@ -433,7 +436,9 @@ export class ProductDetailComponent implements OnInit {
     private wishlistService: WishlistService,
     private snackBar: MatSnackBar,
     private dialog: MatDialog,
-    private settings: SettingsService
+    private settings: SettingsService,
+    private api: ApiService,
+    private auth: AuthService
   ) {}
 
   get pointsForProduct(): number {
@@ -468,6 +473,7 @@ export class ProductDetailComponent implements OnInit {
         this.galleryImages = Array.isArray(data.images) && data.images.length ? data.images : [data.image_url];
         this.wishlisted = this.wishlistService.isWishlisted(String(data.id));
         this.loadRelated();
+        this.loadReviews();
       },
       error: () => { this.loadError = true; }
     });
@@ -537,15 +543,47 @@ export class ProductDetailComponent implements OnInit {
   }
 
   openReviewDialog() {
+    if (!this.auth.isLoggedIn) {
+      this.snackBar.open('Connectez-vous pour laisser un avis.', 'Connexion', { duration: 4000 })
+        .onAction().subscribe(() => this.router.navigate(['/auth/login']));
+      return;
+    }
+    if (this.alreadyReviewed) {
+      this.snackBar.open('Vous avez déjà publié un avis sur cet article.', 'Fermer', { duration: 3500 });
+      return;
+    }
     const ref = this.dialog.open(ReviewDialogComponent, {
       width: '520px',
       panelClass: 'luxury-dialog'
     });
     ref.componentInstance.productName = this.product.name;
     ref.afterClosed().subscribe(result => {
-      if (result) {
-        this.snackBar.open('Merci pour votre avis ! Il sera publié après validation.', 'Fermer', { duration: 4000 });
-      }
+      if (!result) return;
+      this.api.post('reviews', { product_id: this.product.id, rating: result.rating, comment: result.comment }).subscribe({
+        next: () => {
+          this.snackBar.open('Merci, votre avis est publié.', 'Fermer', { duration: 3500 });
+          this.loadReviews();
+        },
+        error: (err) => this.snackBar.open(err?.error?.message || 'Impossible de publier l’avis', 'Fermer', { duration: 4000 })
+      });
+    });
+  }
+
+  formatReviewDate(value: string): string {
+    if (!value) return '';
+    return new Date(value).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  private loadReviews() {
+    if (!this.product?.id) return;
+    this.api.get<any>('reviews', { product_id: this.product.id, limit: 24 }).subscribe({
+      next: (page) => {
+        this.reviews = page.data || [];
+        this.reviewCount = Number(page.count || 0);
+        this.reviewAverage = Number(page.average || 0);
+        this.alreadyReviewed = Boolean(page.mine);
+      },
+      error: () => { this.reviews = []; }
     });
   }
 }
