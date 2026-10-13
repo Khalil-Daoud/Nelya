@@ -17,6 +17,10 @@ const SETTING_LABELS = {
   loyaltyTiers: 'la fidélité',
   checkoutFields: 'les champs de commande',
   heroImage: 'l’image d’accueil',
+  logo: 'le logo',
+  logoFull: 'le logo complet',
+  tagline: 'le slogan',
+  identity: 'l’identité du site',
   permissionGroups: 'les groupes de permissions'
 };
 
@@ -81,6 +85,18 @@ router.put('/', auth, authorize('admin'), async (req, res) => {
     }
     if (req.body.heroImage !== undefined) {
       await settingsService.setHeroImage(req.body.heroImage);
+    }
+    if (req.body.logo !== undefined) {
+      await settingsService.setLogo(req.body.logo);
+    }
+    if (req.body.logoFull !== undefined) {
+      await settingsService.setLogoFull(req.body.logoFull);
+    }
+    if (req.body.tagline !== undefined) {
+      await settingsService.setTagline(req.body.tagline);
+    }
+    if (req.body.identity !== undefined) {
+      await settingsService.setIdentity(req.body.identity);
     }
     const changed = Object.keys(req.body).filter((key) => SETTING_LABELS[key]);
     const summary = changed.includes('permissionGroups')

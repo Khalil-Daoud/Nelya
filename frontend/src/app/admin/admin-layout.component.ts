@@ -10,18 +10,22 @@ import { filter } from 'rxjs/operators';
 import { AuthService, User } from '../services/auth.service';
 import { OrderAlert, OrderInboxService } from '../services/order-inbox.service';
 import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
+import { ImageUrlPipe } from '../pipes/image-url.pipe';
+import { BrandService } from '../services/brand.service';
 
 const COLLAPSE_KEY = 'nelya_admin_collapsed';
 
 @Component({
   selector: 'app-admin-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, MatIconModule, MatButtonModule, MatTooltipModule, MatMenuModule, MatBadgeModule, FormatCurrencyPipe],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, MatIconModule, MatButtonModule, MatTooltipModule, MatMenuModule, MatBadgeModule, FormatCurrencyPipe, ImageUrlPipe],
   template: `
     <div class="admin-shell" (click)="unlockAlerts()">
       <aside class="sidebar" [class.collapsed]="collapsed" [class.open]="sidebarOpen">
         <div class="sidebar-brand">
-          <span class="brand-logo" routerLink="/">NELYA</span>
+          <a class="brand-logo" routerLink="/" [attr.aria-label]="brand.name">
+            <img [src]="brand.logoUrl | imageUrl" [alt]="brand.name">
+          </a>
           <span class="brand-sub">ADMIN</span>
         </div>
 
@@ -34,15 +38,15 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
             <mat-icon [matBadge]="pendingOrders || null" matBadgeColor="warn" matBadgeSize="small">shopping_cart</mat-icon>
             <span>Commandes</span>
           </a>
-          <a routerLink="/admin/products" routerLinkActive="active" class="nav-item" matTooltip="Produits" matTooltipPosition="right">
+          <a routerLink="/admin/products" routerLinkActive="active" class="nav-item" *ngIf="canManageProducts" matTooltip="Produits" matTooltipPosition="right">
             <mat-icon>inventory_2</mat-icon>
             <span>Produits</span>
           </a>
-          <a routerLink="/admin/stock" routerLinkActive="active" class="nav-item" matTooltip="Stock" matTooltipPosition="right">
+          <a routerLink="/admin/stock" routerLinkActive="active" class="nav-item" *ngIf="canManageStock" matTooltip="Stock" matTooltipPosition="right">
             <mat-icon>warehouse</mat-icon>
             <span>Stock</span>
           </a>
-          <a routerLink="/admin/categories" routerLinkActive="active" class="nav-item" matTooltip="Catégories" matTooltipPosition="right">
+          <a routerLink="/admin/categories" routerLinkActive="active" class="nav-item" *ngIf="canManageCategories" matTooltip="Catégories" matTooltipPosition="right">
             <mat-icon>category</mat-icon>
             <span>Catégories</span>
           </a>
@@ -57,6 +61,10 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
           <a routerLink="/admin/employees" routerLinkActive="active" class="nav-item" *ngIf="isAdmin" matTooltip="Employés" matTooltipPosition="right">
             <mat-icon>badge</mat-icon>
             <span>Employés</span>
+          </a>
+          <a routerLink="/admin/identity" routerLinkActive="active" class="nav-item" *ngIf="isAdmin" matTooltip="Identité" matTooltipPosition="right">
+            <mat-icon>palette</mat-icon>
+            <span>Identité</span>
           </a>
           <a routerLink="/admin/settings" routerLinkActive="active" class="nav-item" *ngIf="isAdmin" matTooltip="Paramètres" matTooltipPosition="right">
             <mat-icon>settings</mat-icon>
@@ -155,12 +163,17 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
     .sidebar.collapsed { width: 78px; }
     .sidebar.collapsed .brand-sub, .sidebar.collapsed .nav-item span,
     .sidebar.collapsed .user-meta, .sidebar.collapsed .sidebar-actions { display: none; }
-    .sidebar.collapsed .brand-logo { text-align: center; font-size: 1rem; letter-spacing: 3px; }
+    .sidebar.collapsed .brand-logo { text-align: center; }
+    .sidebar.collapsed .brand-logo img { height: 44px; width: 44px; margin: 0 auto; }
     .sidebar.collapsed .nav-item { justify-content: center; padding: 15px; }
     .sidebar.collapsed .admin-user { justify-content: center; }
 
     .sidebar-brand { padding: 34px 30px 26px; border-bottom: 1px solid rgba(255,255,255,0.08); white-space: nowrap; }
-    .brand-logo { display: block; font-family: var(--font-heading); font-size: 1.5rem; letter-spacing: 8px; color: var(--luxe-white); cursor: pointer; }
+    .brand-logo { display: block; cursor: pointer; line-height: 0; text-decoration: none; }
+    .brand-logo img {
+      height: 58px; width: 58px; display: block;
+      border-radius: 50%; object-fit: cover; background: #f7f4ec;
+    }
     .brand-sub { display: block; margin-top: 6px; font-size: 0.62rem; letter-spacing: 4px; color: var(--luxe-gold); font-weight: 600; }
 
     .sidebar-nav {
@@ -249,7 +262,8 @@ const COLLAPSE_KEY = 'nelya_admin_collapsed';
       .sidebar.collapsed .brand-sub, .sidebar.collapsed .nav-item span,
       .sidebar.collapsed .user-meta, .sidebar.collapsed .sidebar-actions { display: block; }
       .sidebar.collapsed .nav-item { justify-content: flex-start; padding: 13px 18px; }
-      .sidebar.collapsed .brand-logo { text-align: left; font-size: 1.5rem; letter-spacing: 8px; }
+      .sidebar.collapsed .brand-logo { text-align: left; }
+      .sidebar.collapsed .brand-logo img { height: 58px; width: 58px; margin: 0; }
       .sidebar.collapsed .admin-user { justify-content: flex-start; }
       .sidebar-scrim { display: block; position: fixed; inset: 0; background: rgba(10,10,10,0.45); z-index: 850; }
       .topbar { padding: 0 18px; }
@@ -277,7 +291,8 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
   constructor(
     private authService: AuthService,
     private router: Router,
-    private inbox: OrderInboxService
+    private inbox: OrderInboxService,
+    public brand: BrandService
   ) {}
 
   ngOnInit() {
@@ -349,6 +364,7 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
       clients: 'Clients',
       employees: 'Employés',
       users: 'Clients',
+      identity: 'Identité du site',
       settings: 'Paramètres',
       historique: 'Historique'
     };
@@ -373,6 +389,18 @@ export class AdminLayoutComponent implements OnInit, OnDestroy {
 
   get canManageReviews(): boolean {
     return this.authService.hasPermission('reviews.manage');
+  }
+
+  get canManageProducts(): boolean {
+    return this.authService.hasPermission('products.manage');
+  }
+
+  get canManageStock(): boolean {
+    return this.authService.hasPermission('stock.manage');
+  }
+
+  get canManageCategories(): boolean {
+    return this.authService.hasPermission('categories.manage');
   }
 
   logout() {

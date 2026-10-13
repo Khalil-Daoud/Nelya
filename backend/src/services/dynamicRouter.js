@@ -4,6 +4,7 @@ const models = require('../models');
 const { auth, optionalAuth, authorize, requirePermission } = require('../middlewares/auth');
 const { buildListQuery } = require('./listQuery');
 const audit = require('./auditService');
+const { normalizeProductImages } = require('../utils/productImages');
 
 const ENTITY_BY_MODEL = { Product: 'product', Category: 'category', User: 'user' };
 
@@ -23,16 +24,16 @@ const MODEL_CONFIG = {
   Product: {
     publicRead: true,
     writePermission: 'products.manage',
-    writeFields: ['reference', 'name', 'contenance', 'description', 'price', 'cost_price', 'stock', 'image_url', 'category'],
-    searchFields: ['name', 'description', 'reference', 'category'],
-    filterFields: ['category'],
+    writeFields: ['reference', 'name', 'contenance', 'description', 'price', 'cost_price', 'stock', 'image_url', 'images', 'category', 'subcategory'],
+    searchFields: ['name', 'description', 'reference', 'category', 'subcategory'],
+    filterFields: ['category', 'subcategory'],
     rangeFields: ['price', 'stock'],
     sortFields: { name: 'name', price: 'price', stock: 'stock', newest: 'createdAt' },
   },
   Category: {
     publicRead: true,
     writePermission: 'categories.manage',
-    writeFields: ['name', 'description'],
+    writeFields: ['name', 'description', 'parent_id'],
     searchFields: ['name'],
     sortFields: { name: 'name', newest: 'createdAt' },
   },
@@ -65,6 +66,11 @@ function sanitize(modelName, data, req) {
   const clean = (item) => {
     const json = item && typeof item.toJSON === 'function' ? item.toJSON() : item;
     for (const field of exclude) delete json[field];
+    if (modelName === 'Product') {
+      const gallery = normalizeProductImages(json);
+      json.images = gallery.images;
+      json.image_url = gallery.image_url;
+    }
     return json;
   };
   return Array.isArray(data) ? data.map(clean) : clean(data);
@@ -118,6 +124,18 @@ function createDynamicRouter(modelName) {
     if (modelName === 'Product' && 'cost_price' in data) {
       const cost = Number(data.cost_price);
       data.cost_price = Number.isFinite(cost) && cost >= 0 ? cost : 0;
+    }
+    if (modelName === 'Product' && ('images' in data || 'image_url' in data)) {
+      const gallery = normalizeProductImages(data);
+      data.images = gallery.images;
+      data.image_url = gallery.image_url;
+    }
+    if (modelName === 'Product' && 'subcategory' in data) {
+      const sub = String(data.subcategory || '').trim();
+      data.subcategory = sub || null;
+    }
+    if (modelName === 'Category' && 'parent_id' in data) {
+      data.parent_id = data.parent_id || null;
     }
     return data;
   };

@@ -7,6 +7,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { CrudService } from '../services/crud.service';
 import { SettingsService, DEFAULT_HERO_IMAGE } from '../services/settings.service';
+import { BrandService } from '../services/brand.service';
 import { CategoryCount } from '../services/catalog.types';
 import { ProductCardComponent } from '../components/product-card/product-card.component';
 import { ImageUrlPipe } from '../pipes/image-url.pipe';
@@ -23,13 +24,13 @@ import { ReviewDialogComponent } from '../products/product-detail/product-detail
       <!-- HERO -->
       <section class="luxe-hero">
         <div class="luxe-hero-media">
-          <img [src]="heroImage | imageUrl" alt="Cosmétiques naturels Nelya">
+          <img [src]="heroImage | imageUrl" [alt]="brand.copy.heroSubtitle || brand.name">
         </div>
         <div class="luxe-hero-overlay"></div>
         <div class="luxe-hero-content">
-          <span class="luxe-hero-tag fade-in-down">NELYA &mdash; TUNISIE</span>
-          <h1 class="luxe-hero-title fade-in">L'Éclat du<br><em>Naturel</em></h1>
-          <p class="luxe-hero-sub fade-in">Des soins botaniques d'exception, formulés avec passion pour révéler votre beauté intérieure.</p>
+          <span class="luxe-hero-tag fade-in-down">{{ brand.copy.tagline }}</span>
+          <h1 class="luxe-hero-title fade-in">{{ brand.copy.heroTitle }}<br><em>{{ brand.copy.heroTitleEm }}</em></h1>
+          <p class="luxe-hero-sub fade-in">{{ brand.copy.heroSubtitle }}</p>
           <div class="luxe-hero-cta fade-in">
             <a class="hero-btn" routerLink="/collection">Découvrir la boutique</a>
             <a class="luxe-hero-link" routerLink="/collection" [queryParams]="{cat: 'Soins'}">Nos soins <mat-icon>arrow_forward</mat-icon></a>
@@ -39,7 +40,7 @@ import { ReviewDialogComponent } from '../products/product-detail/product-detail
 
       <section class="luxe-trust">
         <div class="container">
-          <p class="trust-kicker">100 % naturel &nbsp;·&nbsp; +30 soins exclusifs</p>
+          <p class="trust-kicker">{{ brand.copy.trustKicker }}</p>
           <div class="trust-grid">
             <article class="trust-card">
               <span class="trust-ico"><mat-icon>local_shipping</mat-icon></span>
@@ -105,16 +106,14 @@ import { ReviewDialogComponent } from '../products/product-detail/product-detail
       <section class="luxe-atelier">
         <div class="luxe-atelier-grid">
           <div class="luxe-atelier-media">
-            <img src="/img/huile.jpg" alt="L'Atelier Nelya">
+            <img [src]="(brand.copy.atelierImage || '/img/huile.jpg') | imageUrl" [alt]="brand.copy.atelierTitle">
           </div>
           <div class="luxe-atelier-body">
-            <span class="luxe-sec-eyebrow">Savoir-faire</span>
-            <h2 class="luxe-atelier-title">L'Atelier Nelya</h2>
-            <p>C'est ici, au cœur de notre atelier, que la magie opère. Nous sélectionnons les essences les plus pures pour créer des soins uniques, respectueux de votre peau et de la nature.</p>
+            <span class="luxe-sec-eyebrow">{{ brand.copy.atelierEyebrow }}</span>
+            <h2 class="luxe-atelier-title">{{ brand.copy.atelierTitle }}</h2>
+            <p>{{ brand.copy.atelierBody }}</p>
             <ul class="luxe-atelier-list">
-              <li><mat-icon>check_circle</mat-icon> Ingrédients d'origine naturelle</li>
-              <li><mat-icon>check_circle</mat-icon> Formulation artisanale</li>
-              <li><mat-icon>check_circle</mat-icon> Production tunisienne</li>
+              <li *ngFor="let bullet of brand.copy.atelierBullets"><mat-icon>check_circle</mat-icon> {{ bullet }}</li>
             </ul>
             <button mat-button class="luxe-text-link" routerLink="/collection">DÉCOUVRIR NOS SECRETS <mat-icon>east</mat-icon></button>
           </div>
@@ -125,7 +124,7 @@ import { ReviewDialogComponent } from '../products/product-detail/product-detail
         <div class="container">
           <div class="luxe-sec-head">
             <span class="luxe-sec-eyebrow">Témoignages</span>
-            <h2 class="luxe-sec-title">La voix de nos clientes</h2>
+            <h2 class="luxe-sec-title">{{ brand.copy.reviewsTitle }}</h2>
             <div class="luxe-sec-line"></div>
             <p class="voices-score" *ngIf="reviewCount">{{ reviewAverage | number:'1.1-1' }} / 5 · {{ reviewCount }} avis</p>
           </div>
@@ -340,6 +339,7 @@ export class HomeComponent implements OnInit {
   constructor(
     private crud: CrudService,
     private snackBar: MatSnackBar,
+    public brand: BrandService,
     private settings: SettingsService,
     private api: ApiService,
     private auth: AuthService,

@@ -8,6 +8,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { BreadcrumbComponent } from '../breadcrumb/breadcrumb.component';
+import { BrandService } from '../../services/brand.service';
 
 @Component({
   selector: 'app-contact',
@@ -22,8 +23,8 @@ import { BreadcrumbComponent } from '../breadcrumb/breadcrumb.component';
 
         <div class="contact-head">
           <span class="contact-eyebrow">Nous sommes à votre écoute</span>
-          <h1>Contactez l'atelier Nelya</h1>
-          <p>Une question sur nos soins, votre commande ou un conseil beauté ? Notre équipe vous répond sous 24h ouvrées.</p>
+          <h1>{{ brand.copy.contactTitle }}</h1>
+          <p>{{ brand.copy.contactIntro }}</p>
         </div>
 
         <div class="contact-grid">
@@ -32,29 +33,29 @@ import { BreadcrumbComponent } from '../breadcrumb/breadcrumb.component';
               <mat-icon>mail_outline</mat-icon>
               <div>
                 <strong>E-mail</strong>
-                <p>contact&#64;nelya.tn</p>
-                <p>commandes&#64;nelya.tn</p>
+                <p>{{ brand.contact.email }}</p>
+                <p *ngIf="brand.contact.emailOrders">{{ brand.contact.emailOrders }}</p>
               </div>
             </div>
             <div class="contact-card">
               <mat-icon>phone_in_talk</mat-icon>
               <div>
                 <strong>Téléphone</strong>
-                <p>+216 22 580 632</p>
-                <p>Du lundi au samedi, 9h &ndash; 18h</p>
+                <p>{{ brand.contact.phoneDisplay }}</p>
+                <p>{{ brand.contact.hours }}</p>
               </div>
             </div>
             <div class="contact-card">
               <mat-icon>location_on</mat-icon>
               <div>
                 <strong>Atelier</strong>
-                <p>Immeuble Khalsa, Hammam Chott<br>Tunisie 2084</p>
+                <p>{{ brand.contact.addressLine1 }}<br>{{ brand.contact.addressLine2 }}</p>
               </div>
             </div>
             <div class="contact-socials">
-              <a href="https://www.facebook.com/profile.php?id=61551180391546" target="_blank" rel="noopener" aria-label="Facebook"><mat-icon>facebook</mat-icon></a>
-              <a href="#" aria-label="Instagram"><mat-icon>instagram</mat-icon></a>
-              <a href="#" aria-label="TikTok"><mat-icon>music_note</mat-icon></a>
+              <a *ngIf="brand.social.facebook" [href]="brand.social.facebook" target="_blank" rel="noopener" aria-label="Facebook"><mat-icon>facebook</mat-icon></a>
+              <a *ngIf="brand.social.instagram" [href]="brand.social.instagram" target="_blank" rel="noopener" aria-label="Instagram"><mat-icon>instagram</mat-icon></a>
+              <a *ngIf="brand.social.tiktok" [href]="brand.social.tiktok" target="_blank" rel="noopener" aria-label="TikTok"><mat-icon>music_note</mat-icon></a>
             </div>
           </div>
 
@@ -135,7 +136,7 @@ import { BreadcrumbComponent } from '../breadcrumb/breadcrumb.component';
   `]
 })
 export class ContactComponent {
-  constructor(private snackBar: MatSnackBar) {}
+  constructor(private snackBar: MatSnackBar, public brand: BrandService) {}
 
   send(data: any) {
     this.snackBar.open('Merci pour votre message ! Nous vous répondrons sous 24h ouvrées.', 'Fermer', { duration: 4500 });

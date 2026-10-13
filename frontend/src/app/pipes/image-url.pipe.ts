@@ -9,6 +9,9 @@ export class ImageUrlPipe implements PipeTransform {
   transform(value: string): string {
     if (!value) return '';
     if (value.startsWith('http://') || value.startsWith('https://')) return value;
+    if (value.startsWith('assets/') || value.startsWith('/assets/')) {
+      return value.replace(/^\//, '');
+    }
 
     const origin = (API_BASE_URL || '').replace(/\/$/, '');
     return `${origin}${value}`;

@@ -5,8 +5,11 @@ const User = require('../models/User');
 
 const ADMIN_GROUP_ID = 'admin';
 const SELLER_GROUP_ID = 'seller';
+const CATALOG_REVISION = 2;
+const CATALOG_REVISION_KEY = 'permission_catalog_revision';
 
 const PERMISSION_CATALOG = [
+  { key: 'admin.access', section: 'Accès', label: 'Voir l’espace administration' },
   { key: 'orders.update_status', section: 'Commandes', label: 'Changer le statut (attente, confirmée, expédiée, livrée)' },
   { key: 'orders.cancel', section: 'Commandes', label: 'Annuler une commande' },
   { key: 'products.manage', section: 'Catalogue', label: 'Créer et modifier les produits' },
@@ -18,6 +21,7 @@ const PERMISSION_CATALOG = [
 
 const ALLOWED_KEYS = new Set(PERMISSION_CATALOG.map((p) => p.key));
 const SELLER_DEFAULT_PERMISSIONS = [
+  'admin.access',
   'orders.update_status',
   'orders.cancel',
   'products.manage',
@@ -103,14 +107,33 @@ function mergeWithDefaults(stored) {
   return [admin, seller, ...rest];
 }
 
+async function ensureCatalogRevision(groups) {
+  const setting = await Setting.findByPk(CATALOG_REVISION_KEY);
+  const current = Number(setting?.value || 1);
+  if (current >= CATALOG_REVISION) return groups;
+
+  const seller = groups.find((g) => g.id === SELLER_GROUP_ID);
+  if (seller && !seller.permissions.includes('*') && !seller.permissions.includes('admin.access')) {
+    seller.permissions = ['admin.access', ...seller.permissions];
+  }
+  await Setting.upsert({ key: 'permission_groups', value: JSON.stringify(groups) });
+  await Setting.upsert({ key: CATALOG_REVISION_KEY, value: String(CATALOG_REVISION) });
+  return groups;
+}
+
 async function getPermissionGroups() {
   const setting = await Setting.findByPk('permission_groups');
-  if (!setting?.value) return defaultGroups();
-  try {
-    return mergeWithDefaults(JSON.parse(setting.value));
-  } catch {
-    return defaultGroups();
+  let groups;
+  if (!setting?.value) {
+    groups = defaultGroups();
+  } else {
+    try {
+      groups = mergeWithDefaults(JSON.parse(setting.value));
+    } catch {
+      groups = defaultGroups();
+    }
   }
+  return ensureCatalogRevision(groups);
 }
 
 async function setPermissionGroups(raw) {
@@ -120,6 +143,7 @@ async function setPermissionGroups(raw) {
   const removed = previous.filter((g) => !g.system && !ids.has(g.id)).map((g) => g.id);
 
   await Setting.upsert({ key: 'permission_groups', value: JSON.stringify(next) });
+  await Setting.upsert({ key: CATALOG_REVISION_KEY, value: String(CATALOG_REVISION) });
 
   if (removed.length) {
     await User.update(

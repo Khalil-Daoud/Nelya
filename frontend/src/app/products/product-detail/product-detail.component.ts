@@ -100,7 +100,7 @@ export class ReviewDialogComponent {
 
           <!-- INFOS -->
           <div class="info">
-            <span class="info-category">{{ product.category }}</span>
+            <span class="info-category">{{ product.category }}<ng-container *ngIf="product.subcategory"> · {{ product.subcategory }}</ng-container></span>
             <h1 class="info-title">{{ product.name }}</h1>
             <div class="info-rating">
               <mat-icon *ngFor="let s of [1,2,3,4,5]">{{ s <= reviewAverage ? 'star' : 'star_border' }}</mat-icon>
@@ -448,6 +448,13 @@ export class ProductDetailComponent implements OnInit {
   get breadcrumbs() {
     const crumbs: any[] = [{ label: 'Boutique', url: '/collection' }];
     if (this.product?.category) crumbs.push({ label: this.product.category, url: '/collection', queryParams: { cat: this.product.category } });
+    if (this.product?.subcategory) {
+      crumbs.push({
+        label: this.product.subcategory,
+        url: '/collection',
+        queryParams: { cat: this.product.category, sub: this.product.subcategory }
+      });
+    }
     crumbs.push({ label: this.product.name });
     return crumbs;
   }

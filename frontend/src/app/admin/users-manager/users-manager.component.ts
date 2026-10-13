@@ -113,8 +113,11 @@ export class ResetPasswordDialogComponent {
             <input matInput type="email" [(ngModel)]="newUser.email">
           </mat-form-field>
           <mat-form-field appearance="outline">
-            <mat-label>Mot de passe (min. 6)</mat-label>
+            <mat-label>Mot de passe (min. 10)</mat-label>
             <input matInput type="password" [(ngModel)]="newUser.password">
+            <mat-hint *ngIf="newUser.password && newUser.password.length < 10">
+              Encore {{ 10 - newUser.password.length }} caractère(s)
+            </mat-hint>
           </mat-form-field>
           <mat-form-field appearance="outline" *ngIf="!isClients">
             <mat-label>Rôle</mat-label>
@@ -133,6 +136,7 @@ export class ResetPasswordDialogComponent {
         <button mat-flat-button color="primary" [disabled]="!canCreate" (click)="createUser()">
           <mat-icon>save</mat-icon> Créer le compte
         </button>
+        <p class="create-hint" *ngIf="!canCreate">Le bouton s’active quand tous les champs sont remplis, mot de passe de 10 caractères minimum.</p>
       </div>
 
       <div class="table-wrapper glass-panel">
@@ -230,6 +234,7 @@ export class ResetPasswordDialogComponent {
     .create-form { background: white; border: 1px solid var(--luxe-border); border-radius: 12px; padding: 25px; margin-bottom: 25px; }
     .create-form h3 { margin: 0 0 18px; font-size: 1.1rem; font-weight: 600; }
     .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+    .create-hint { margin: 10px 0 0; font-size: 0.8rem; color: var(--luxe-text-muted); font-weight: 300; }
 
     .table-wrapper { border-radius: 12px; overflow-x: auto; background: white; }
     .luxe-table { width: 100%; min-width: 640px; background: transparent; }

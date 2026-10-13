@@ -87,6 +87,14 @@ export class AuthService {
     return this.currentUserSubject.value?.role === 'admin';
   }
 
+  get canAccessAdmin(): boolean {
+    return this.hasPermission('admin.access');
+  }
+
+  homeAfterLogin(): string {
+    return this.canAccessAdmin ? '/admin' : '/';
+  }
+
   hasPermission(key: string): boolean {
     const user = this.currentUserSubject.value;
     if (!user) return false;

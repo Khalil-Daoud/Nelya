@@ -79,6 +79,7 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
               <div class="card-title"><h3>Accès rapides</h3></div>
               <a class="quick-link" routerLink="/wishlist"><mat-icon>favorite_border</mat-icon> Mes favoris</a>
               <a class="quick-link" routerLink="/collection"><mat-icon>storefront</mat-icon> Continuer mes achats</a>
+              <a class="quick-link" routerLink="/admin" *ngIf="canAccessAdmin"><mat-icon>admin_panel_settings</mat-icon> Espace administration</a>
               <button class="quick-link" (click)="onLogout()"><mat-icon>logout</mat-icon> Déconnexion</button>
             </div>
             <div class="card support-card">
@@ -92,7 +93,7 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
         <!-- Historique -->
         <section class="orders-section">
           <div class="orders-head">
-            <h2>Mes Commandes</h2>
+            <h2>{{ isStaff ? 'Mes achats' : 'Mes Commandes' }}</h2>
             <div class="orders-line"></div>
           </div>
 
@@ -128,8 +129,10 @@ const STATUS_TRANSLATIONS: { [key: string]: string } = {
             <div class="no-orders">
               <mat-icon>receipt_long</mat-icon>
               <h3>Aucune commande pour le moment</h3>
-              <p>Parcourez notre collection et laissez-vous tenter.</p>
-              <button mat-flat-button color="primary" routerLink="/collection">DÉCOUVRIR LA BOUTIQUE</button>
+              <p *ngIf="!isStaff">Parcourez notre collection et laissez-vous tenter.</p>
+              <p *ngIf="isStaff">Les commandes des clients se gèrent dans l’espace administration.</p>
+              <button *ngIf="!isStaff" mat-flat-button color="primary" routerLink="/collection">DÉCOUVRIR LA BOUTIQUE</button>
+              <a *ngIf="canAccessAdmin" mat-flat-button color="primary" routerLink="/admin">ACCÉDER À L’ADMINISTRATION</a>
             </div>
           </ng-template>
         </section>
@@ -245,6 +248,14 @@ export class ProfileComponent implements OnInit {
     private snackBar: MatSnackBar
   ) {}
 
+  get isStaff(): boolean {
+    return this.user?.role === 'admin' || this.user?.role === 'seller';
+  }
+
+  get canAccessAdmin(): boolean {
+    return this.authService.canAccessAdmin;
+  }
+
   get initials(): string {
     const u = this.user;
     if (!u) return '';
@@ -268,7 +279,7 @@ export class ProfileComponent implements OnInit {
   }
 
   loadOrders() {
-    this.crudService.getAll<any>('orders').subscribe({
+    this.crudService.getAll<any>('orders', { mine: '1' }).subscribe({
       next: orders => {
         this.orders = (orders || []).sort((a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()

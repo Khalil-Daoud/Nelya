@@ -98,13 +98,13 @@ interface StockSummary {
           <p class="import-help">
             Colonnes :
             <code>Ref</code>, <code>Catégorie</code>, <code>Désignation</code>,
-            <code>Contenance</code>, <code>Prix</code>, <code>PrixAchat</code>, <code>Image</code>
-            (<code>Stock</code> et <code>Description</code> facultatives).
+            <code>Contenance</code>, <code>Prix</code>, <code>PrixAchat</code>, <code>Image</code>,
+            <code>Image2</code>… (<code>Stock</code> et <code>Description</code> facultatives).
             CSV, Excel (<code>.xlsx</code>) ou ZIP. Première feuille du classeur.
           </p>
           <ul class="import-rules">
             <li>Un CSV ou un Excel ne peut pas contenir les photos elles-mêmes : seulement un nom de fichier ou un lien.</li>
-            <li>Pour envoyer les images : zippez le CSV/Excel avec les photos, et mettez le nom du fichier dans la colonne <strong>Image</strong> (ex. <code>deodorant.jpg</code>).</li>
+            <li>Pour envoyer les photos : zippez le CSV/Excel avec les fichiers, et mettez les noms dans <strong>Image</strong>, <strong>Image2</strong>… (ex. <code>deodorant.jpg</code>). Plusieurs noms dans une cellule, séparés par <code>|</code>.</li>
             <li>Les catégories absentes sont créées. Une Ref déjà connue met le produit à jour.</li>
           </ul>
 
@@ -174,12 +174,20 @@ interface StockSummary {
 
               <mat-form-field appearance="outline">
                 <mat-label>Catégorie</mat-label>
-                <mat-select formControlName="category">
-                  <mat-option *ngFor="let c of categories" [value]="c.name">{{ c.name }}</mat-option>
+                <mat-select formControlName="category" (selectionChange)="onParentCategoryChange()">
+                  <mat-option *ngFor="let c of parentCategories" [value]="c.name">{{ c.name }}</mat-option>
                 </mat-select>
                 <mat-hint *ngIf="categories.length === 0">
                   Aucune catégorie — <a routerLink="/admin/categories">créez-en une</a>
                 </mat-hint>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline" *ngIf="subsForSelectedParent().length">
+                <mat-label>Sous-catégorie</mat-label>
+                <mat-select formControlName="subcategory">
+                  <mat-option [value]="''">Aucune</mat-option>
+                  <mat-option *ngFor="let s of subsForSelectedParent()" [value]="s.name">{{ s.name }}</mat-option>
+                </mat-select>
               </mat-form-field>
 
               <mat-form-field appearance="outline">
@@ -200,20 +208,33 @@ interface StockSummary {
             </div>
 
             <div class="image-field full-width">
-              <span class="image-label">Image du produit</span>
+              <span class="image-label">Photos du produit</span>
+              <p class="image-hint">Au moins une photo. La première est la couverture (liste, accueil, panier). Jusqu’à 8.</p>
+              <div class="gallery-edit" *ngIf="galleryImages.length">
+                <div class="gallery-tile" *ngFor="let img of galleryImages; let i = index">
+                  <img [src]="img | imageUrl" [alt]="'Photo ' + (i + 1)">
+                  <span class="cover-tag" *ngIf="i === 0">Couverture</span>
+                  <div class="tile-actions">
+                    <button type="button" mat-icon-button [disabled]="i === 0" (click)="moveImage(i, -1)" matTooltip="Vers la gauche">
+                      <mat-icon>chevron_left</mat-icon>
+                    </button>
+                    <button type="button" mat-icon-button [disabled]="i === galleryImages.length - 1" (click)="moveImage(i, 1)" matTooltip="Vers la droite">
+                      <mat-icon>chevron_right</mat-icon>
+                    </button>
+                    <button type="button" mat-icon-button color="warn" (click)="removeImage(i)" matTooltip="Retirer">
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  </div>
+                </div>
+              </div>
               <div class="image-actions">
-                <input type="file" hidden #fileInput accept="image/*" (change)="onFileSelected($event)">
-                <button type="button" mat-stroked-button color="primary" [disabled]="uploading" (click)="fileInput.click()">
-                  <mat-icon>upload</mat-icon>
-                  {{ uploading ? 'Envoi en cours…' : 'Choisir une image' }}
+                <input type="file" hidden #fileInput accept="image/*" multiple (change)="onFileSelected($event)">
+                <button type="button" mat-stroked-button color="primary" [disabled]="uploading || galleryImages.length >= 8" (click)="fileInput.click()">
+                  <mat-icon>add_photo_alternate</mat-icon>
+                  {{ uploading ? 'Envoi en cours…' : 'Ajouter des photos' }}
                 </button>
                 <mat-spinner *ngIf="uploading" diameter="20"></mat-spinner>
-                <img *ngIf="!uploading && imagePreview" [src]="imagePreview | imageUrl" class="image-preview" alt="Aperçu">
               </div>
-              <mat-form-field appearance="outline" class="full-width" style="margin-top: 10px;">
-                <mat-label>URL de l'image</mat-label>
-                <input matInput formControlName="image_url" placeholder="/img/… ou https://…">
-              </mat-form-field>
             </div>
 
             <mat-form-field appearance="outline" class="full-width">
@@ -222,7 +243,7 @@ interface StockSummary {
             </mat-form-field>
 
             <div class="form-actions">
-              <button mat-flat-button color="primary" type="submit" [disabled]="productForm.invalid">
+              <button mat-flat-button color="primary" type="submit" [disabled]="productForm.invalid || !galleryImages.length">
                 <mat-icon>save</mat-icon> Enregistrer
               </button>
             </div>
@@ -241,7 +262,10 @@ interface StockSummary {
             <mat-label>Catégorie</mat-label>
             <mat-select [(ngModel)]="categoryFilter" (ngModelChange)="resetPage()">
               <mat-option value="all">Toutes</mat-option>
-              <mat-option *ngFor="let c of categories" [value]="c.name">{{ c.name }}</mat-option>
+              <ng-container *ngFor="let c of parentCategories">
+                <mat-option [value]="c.name">{{ c.name }}</mat-option>
+                <mat-option *ngFor="let s of childrenOfParent(c.id)" [value]="'sub:' + s.name"> — {{ s.name }}</mat-option>
+              </ng-container>
             </mat-select>
           </mat-form-field>
           <span class="result-count">{{ total }} produit{{ total > 1 ? 's' : '' }}</span>
@@ -256,10 +280,13 @@ interface StockSummary {
             <span></span>
           </div>
           <div class="row" *ngFor="let p of products">
-            <img [src]="p.image_url | imageUrl" [alt]="p.name" class="thumb">
+            <div class="thumb-wrap">
+              <img [src]="p.image_url | imageUrl" [alt]="p.name" class="thumb">
+              <span class="more-photos" *ngIf="photoCount(p) > 1">+{{ photoCount(p) - 1 }}</span>
+            </div>
             <div class="meta">
               <strong>{{ p.name }}</strong>
-              <span>{{ p.reference || 'Sans réf.' }} · {{ p.category || '—' }}<ng-container *ngIf="p.contenance"> · {{ p.contenance }}</ng-container></span>
+              <span>{{ p.reference || 'Sans réf.' }} · {{ p.category || '—' }}<ng-container *ngIf="p.subcategory"> · {{ p.subcategory }}</ng-container><ng-container *ngIf="p.contenance"> · {{ p.contenance }}</ng-container></span>
             </div>
             <span class="price">
               <strong>{{ p.price | formatCurrency }}</strong>
@@ -313,8 +340,21 @@ interface StockSummary {
     .form-actions { display: flex; justify-content: flex-end; margin-top: 15px; }
     .image-field { margin-bottom: 15px; }
     .image-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--luxe-text-muted); display: block; margin-bottom: 8px; font-weight: 600; }
+    .image-hint { margin: 0 0 12px; font-size: 0.82rem; color: var(--luxe-text-muted); font-weight: 300; }
     .image-actions { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
-    .image-preview { width: 90px; height: 90px; object-fit: cover; border-radius: 8px; border: 1px solid var(--luxe-border); }
+    .gallery-edit { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+    .gallery-tile { position: relative; width: 96px; }
+    .gallery-tile img { width: 96px; height: 96px; object-fit: cover; border-radius: 10px; border: 1px solid var(--luxe-border); display: block; }
+    .cover-tag {
+      position: absolute; top: 6px; left: 6px; background: var(--luxe-black); color: var(--luxe-gold);
+      font-size: 0.62rem; letter-spacing: 0.6px; text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
+    }
+    .tile-actions { display: flex; justify-content: center; }
+    .thumb-wrap { position: relative; width: 52px; height: 64px; }
+    .more-photos {
+      position: absolute; right: -4px; bottom: -4px; background: var(--luxe-black); color: var(--luxe-white);
+      font-size: 0.65rem; padding: 1px 5px; border-radius: 8px;
+    }
 
     .import-help { color: var(--luxe-text-muted); font-size: 0.9rem; line-height: 1.7; }
     .import-help code, .import-rules code { background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; }
@@ -408,6 +448,37 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
   loading = true;
   searchTerm = '';
   categoryFilter = 'all';
+
+  get parentCategories(): any[] {
+    return this.categories.filter((c) => !c.parent_id);
+  }
+
+  get listCategoryFilter(): string | undefined {
+    if (this.categoryFilter === 'all' || this.categoryFilter.startsWith('sub:')) return undefined;
+    return this.categoryFilter;
+  }
+
+  get listSubcategoryFilter(): string | undefined {
+    return this.categoryFilter.startsWith('sub:') ? this.categoryFilter.slice(4) : undefined;
+  }
+
+  childrenOfParent(parentId: string): any[] {
+    return this.categories.filter((c) => c.parent_id === parentId);
+  }
+
+  subsForSelectedParent(): any[] {
+    const name = this.productForm?.get('category')?.value;
+    const parent = this.categories.find((c) => c.name === name && !c.parent_id);
+    return parent ? this.childrenOfParent(parent.id) : [];
+  }
+
+  onParentCategoryChange() {
+    const current = this.productForm.get('subcategory')?.value;
+    if (current && !this.subsForSelectedParent().some((s) => s.name === current)) {
+      this.productForm.patchValue({ subcategory: '' });
+    }
+  }
+
   pageIndex = 0;
   pageSize = 10;
   private lowThreshold = 10;
@@ -421,7 +492,8 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
   isEditMode = false;
   editingProductId: string | null = null;
   uploading = false;
-  imagePreview = '';
+  galleryImages: string[] = [];
+  readonly maxImages = 8;
 
   showImport = false;
   importing = false;
@@ -449,7 +521,8 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
           page: this.pageIndex + 1,
           limit: this.pageSize,
           search: this.searchTerm.trim() || undefined,
-          category: this.categoryFilter === 'all' ? undefined : this.categoryFilter,
+          category: this.listCategoryFilter,
+          subcategory: this.listSubcategoryFilter,
           sort: 'newest:desc'
         })),
         takeUntil(this.destroy$)
@@ -520,33 +593,72 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
       contenance: [''],
       name: ['', Validators.required],
       category: ['', Validators.required],
+      subcategory: [''],
       price: ['', [Validators.required, Validators.min(0)]],
       cost_price: [0, [Validators.min(0)]],
       stock: [0, [Validators.required, Validators.min(0)]],
-      image_url: ['', Validators.required],
+      image_url: [''],
       description: ['']
     });
   }
 
-  get imageValue(): string {
-    return this.productForm?.get('image_url')?.value || '';
+  photoCount(product: any): number {
+    if (Array.isArray(product?.images) && product.images.length) return product.images.length;
+    return product?.image_url ? 1 : 0;
+  }
+
+  syncCover() {
+    this.productForm.patchValue({ image_url: this.galleryImages[0] || '' });
+  }
+
+  moveImage(index: number, direction: number) {
+    const next = index + direction;
+    if (next < 0 || next >= this.galleryImages.length) return;
+    const copy = [...this.galleryImages];
+    [copy[index], copy[next]] = [copy[next], copy[index]];
+    this.galleryImages = copy;
+    this.syncCover();
+  }
+
+  removeImage(index: number) {
+    this.galleryImages = this.galleryImages.filter((_, i) => i !== index);
+    this.syncCover();
   }
 
   onFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
+    const files = Array.from(input.files || []);
+    input.value = '';
+    if (!files.length) return;
+    const room = this.maxImages - this.galleryImages.length;
+    if (room <= 0) {
+      this.snackBar.open('Maximum 8 photos par produit', 'Fermer', { duration: 3000 });
+      return;
+    }
+    const queue = files.slice(0, room);
+    this.uploadNext(queue, 0);
+  }
 
+  private uploadNext(files: File[], index: number) {
+    if (index >= files.length) {
+      this.uploading = false;
+      this.snackBar.open(
+        files.length > 1 ? `${files.length} photos ajoutées` : 'Photo ajoutée',
+        'OK',
+        { duration: 2500 }
+      );
+      return;
+    }
     const formData = new FormData();
-    formData.append('image', file);
-
+    formData.append('image', files[index]);
     this.uploading = true;
     this.api.post<{ url: string }>('uploads', formData).subscribe({
       next: (res) => {
-        this.uploading = false;
-        this.imagePreview = res.url;
-        this.productForm.patchValue({ image_url: res.url });
-        this.snackBar.open('Image envoyée avec succès', 'OK', { duration: 2500 });
+        if (res?.url && !this.galleryImages.includes(res.url)) {
+          this.galleryImages = [...this.galleryImages, res.url];
+          this.syncCover();
+        }
+        this.uploadNext(files, index + 1);
       },
       error: (err) => {
         this.uploading = false;
@@ -554,7 +666,6 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
         this.snackBar.open(msg, 'Fermer', { duration: 4000 });
       }
     });
-    input.value = '';
   }
 
   loadProducts() {
@@ -615,9 +726,9 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
 
   downloadTemplate() {
     const rows = [
-      'Ref;Categorie;Designation;Contenance;Prix;PrixAchat;Image;Stock',
-      'NEL-001;Soins Visage;Crème de Nuit Régénérante;50 ml;89,900;42,000;creme-nuit.jpg;25',
-      'NEL-002;Parfums;Eau de Parfum Oud;100 ml;149,000;70,000;https://exemple.com/parfum.jpg;10'
+      'Ref;Categorie;SousCategorie;Designation;Contenance;Prix;PrixAchat;Image;Image2;Stock',
+      'NEL-001;Soins Visage;Sérums;Crème de Nuit Régénérante;50 ml;89,900;42,000;creme-nuit.jpg;creme-nuit-2.jpg;25',
+      'NEL-002;Parfums;;Eau de Parfum Oud;100 ml;149,000;70,000;https://exemple.com/parfum.jpg;;10'
     ];
     const blob = new Blob(['\ufeff' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -633,8 +744,8 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
     if (!this.showForm) {
       this.isEditMode = false;
       this.editingProductId = null;
-      this.imagePreview = '';
-      this.productForm.reset({ stock: 0, cost_price: 0 });
+      this.galleryImages = [];
+      this.productForm.reset({ stock: 0, cost_price: 0, image_url: '', subcategory: '' });
     }
   }
 
@@ -643,24 +754,36 @@ export class ProductsManagerComponent implements OnInit, OnDestroy {
     this.editingProductId = product.id;
     this.showForm = true;
     this.showImport = false;
-    this.imagePreview = product.image_url;
+    this.galleryImages = Array.isArray(product.images) && product.images.length
+      ? [...product.images]
+      : (product.image_url ? [product.image_url] : []);
     this.productForm.patchValue({
       reference: product.reference,
       contenance: product.contenance,
       name: product.name,
       category: product.category,
+      subcategory: product.subcategory || '',
       price: product.price,
       cost_price: product.cost_price ?? 0,
       stock: product.stock,
-      image_url: product.image_url,
+      image_url: this.galleryImages[0] || '',
       description: product.description
     });
   }
 
   saveProduct() {
     if (this.productForm.invalid) return;
+    if (!this.galleryImages.length) {
+      this.snackBar.open('Ajoutez au moins une photo', 'Fermer', { duration: 3000 });
+      return;
+    }
 
-    const payload = this.productForm.value;
+    const payload = {
+      ...this.productForm.value,
+      image_url: this.galleryImages[0],
+      images: this.galleryImages
+    };
+    if (!payload.subcategory) payload.subcategory = null;
 
     if (this.isEditMode && this.editingProductId) {
       this.crud.update('products', this.editingProductId, payload).subscribe({

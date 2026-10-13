@@ -118,11 +118,40 @@ async function startServer() {
     }
 
     try {
+      await sequelize.query('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "images" JSONB DEFAULT \'[]\'::jsonb');
+      await sequelize.query(`
+        UPDATE "products"
+        SET "images" = jsonb_build_array("image_url")
+        WHERE ("images" IS NULL OR "images" = '[]'::jsonb)
+          AND "image_url" IS NOT NULL AND btrim("image_url") <> ''
+      `);
+      console.log('Schema migration applied (products.images).');
+    } catch (e) {
+      console.warn('Migration products.images skipped:', e.message);
+    }
+
+    try {
       await sequelize.query('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "cost_price" DECIMAL(10,2) DEFAULT 0');
       await sequelize.query('ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "cost_price" DECIMAL(10,2) DEFAULT 0');
       console.log('Schema migration applied (products.cost_price, order_items.cost_price).');
     } catch (e) {
       console.warn('Migration cost_price skipped:', e.message);
+    }
+
+    try {
+      await sequelize.query('ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "subcategory" VARCHAR(255)');
+      await sequelize.query('CREATE INDEX IF NOT EXISTS "products_subcategory_idx" ON "products" ("subcategory")');
+      console.log('Schema migration applied (products.subcategory).');
+    } catch (e) {
+      console.warn('Migration products.subcategory skipped:', e.message);
+    }
+
+    try {
+      await sequelize.query('ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "parent_id" UUID');
+      await sequelize.query('CREATE INDEX IF NOT EXISTS "categories_parent_id_idx" ON "categories" ("parent_id")');
+      console.log('Schema migration applied (categories.parent_id).');
+    } catch (e) {
+      console.warn('Migration categories.parent_id skipped:', e.message);
     }
 
     try {

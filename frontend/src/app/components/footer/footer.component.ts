@@ -3,11 +3,13 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { BrandService } from '../../services/brand.service';
+import { ImageUrlPipe } from '../../pipes/image-url.pipe';
 
 @Component({
   selector: 'app-footer',
   standalone: true,
-  imports: [CommonModule, RouterLink, MatIconModule, MatSnackBarModule],
+  imports: [CommonModule, RouterLink, MatIconModule, MatSnackBarModule, ImageUrlPipe],
   template: `
     <footer class="luxe-footer">
       <div class="luxe-certifications">
@@ -19,14 +21,20 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
       <div class="luxe-footer-grid">
         <div class="luxe-footer-brand">
-          <div class="luxe-logo">NELYA</div>
-          <p>L'excellence de la cosmétique naturelle tunisienne. Des soins formulés avec passion pour révéler votre beauté intérieure.</p>
+          <div class="luxe-logo">
+            <img [src]="brand.logoFullUrl | imageUrl" [alt]="brand.name">
+          </div>
+          <p>{{ brand.copy.footerBlurb }}</p>
           <div class="luxe-socials">
-            <a href="https://www.facebook.com/profile.php?id=61551180391546" target="_blank" rel="noopener" aria-label="Facebook">
+            <a *ngIf="brand.social.facebook" [href]="brand.social.facebook" target="_blank" rel="noopener" aria-label="Facebook">
               <mat-icon>facebook</mat-icon>
             </a>
-            <a href="#" aria-label="Instagram"><mat-icon>instagram</mat-icon></a>
-            <a href="#" aria-label="TikTok"><mat-icon>music_note</mat-icon></a>
+            <a *ngIf="brand.social.instagram" [href]="brand.social.instagram" target="_blank" rel="noopener" aria-label="Instagram">
+              <mat-icon>instagram</mat-icon>
+            </a>
+            <a *ngIf="brand.social.tiktok" [href]="brand.social.tiktok" target="_blank" rel="noopener" aria-label="TikTok">
+              <mat-icon>music_note</mat-icon>
+            </a>
           </div>
         </div>
 
@@ -50,9 +58,9 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
         <div class="luxe-footer-col luxe-footer-contact">
           <h4>NOUS CONTACTER</h4>
           <a routerLink="/contact" class="luxe-contact-link"><mat-icon>chat_outline</mat-icon> Page contact</a>
-          <p><mat-icon>mail_outline</mat-icon> contact&#64;nelya.tn</p>
-          <p><mat-icon>phone_in_talk</mat-icon> +216 22 580 632</p>
-          <p><mat-icon>location_on</mat-icon> Immeuble Khalsa, Hammam Chott, Tunisie 2084</p>
+          <p><mat-icon>mail_outline</mat-icon> {{ brand.contact.email }}</p>
+          <p><mat-icon>phone_in_talk</mat-icon> {{ brand.contact.phoneDisplay }}</p>
+          <p><mat-icon>location_on</mat-icon> {{ brand.addressLine }}</p>
           <form class="luxe-newsletter" (submit)="subscribe(email.value); $event.preventDefault()">
             <input #email type="email" required placeholder="Votre e-mail" aria-label="Votre adresse e-mail">
             <button type="submit" aria-label="S'abonner à la newsletter"><mat-icon>arrow_forward</mat-icon></button>
@@ -70,7 +78,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
       </div>
 
       <div class="luxe-copyright">
-        &copy; 2026 NELYA. Tous droits réservés. &mdash; Conçu avec soin en Tunisie.
+        &copy; {{ brand.year }} {{ brand.legalName }}. Tous droits réservés. &mdash; {{ brand.copy.copyrightExtra }}
       </div>
     </footer>
   `,
@@ -100,9 +108,10 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
       max-width: 1440px; margin: 0 auto;
       display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr; gap: 60px;
     }
-    .luxe-logo {
-      font-family: var(--font-heading); font-size: 1.6rem; font-weight: 700;
-      letter-spacing: 10px; color: var(--luxe-white); text-transform: uppercase; margin-bottom: 25px;
+    .luxe-logo { margin-bottom: 22px; }
+    .luxe-logo img {
+      height: 148px; width: auto; display: block;
+      border-radius: 12px; background: #f7f4ec;
     }
     .luxe-footer-brand p { color: #9a9a9a; line-height: 1.8; font-weight: 300; font-size: 0.95rem; max-width: 360px; font-family: var(--font-body); }
     .luxe-socials { margin-top: 30px; display: flex; gap: 16px; }
@@ -175,7 +184,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
   `]
 })
 export class FooterComponent {
-  constructor(private snackBar: MatSnackBar) {}
+  constructor(private snackBar: MatSnackBar, public brand: BrandService) {}
 
   subscribe(email: string) {
     this.snackBar.open('Merci ! Votre inscription à la newsletter a bien été enregistrée.', 'Fermer', { duration: 3500 });

@@ -7,6 +7,7 @@ import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule } from '@angular/material/dialog';
 import { authInterceptor } from './interceptors/auth.interceptor';
 import { SettingsService } from './services/settings.service';
+import { BrandService } from './services/brand.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -19,9 +20,10 @@ export const appConfig: ApplicationConfig = {
     importProvidersFrom(MatSnackBarModule, MatDialogModule),
     {
       provide: APP_INITIALIZER,
-      useFactory: (settings: SettingsService) => () => settings.load(),
+      useFactory: (brand: BrandService, settings: SettingsService) => () =>
+        brand.load().then(() => settings.load()),
       multi: true,
-      deps: [SettingsService]
+      deps: [BrandService, SettingsService]
     }
   ]
 };

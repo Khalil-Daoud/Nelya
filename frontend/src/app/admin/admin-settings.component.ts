@@ -9,30 +9,38 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { SettingsService, Currency, WhatsAppSettings, LoyaltyTier, DEFAULT_LOYALTY_TIERS, DEFAULT_CHECKOUT_FIELDS, DEFAULT_HERO_IMAGE, CheckoutField, PermissionDef, PermissionGroup } from '../services/settings.service';
+import { SettingsService, Currency, WhatsAppSettings, LoyaltyTier, DEFAULT_LOYALTY_TIERS, DEFAULT_CHECKOUT_FIELDS, CheckoutField, PermissionDef, PermissionGroup } from '../services/settings.service';
 import { FormatCurrencyPipe } from '../pipes/format-currency.pipe';
-import { ImageUrlPipe } from '../pipes/image-url.pipe';
-import { ApiService } from '../services/api.service';
 import { ConfirmService } from '../services/confirm.service';
 
-type SettingsFold = 'hero' | 'currency' | 'checkout' | 'whatsapp' | 'loyalty' | 'perms';
-const FOLDS_KEY = 'nelya_settings_folds_v2';
+type SettingsFold = 'currency' | 'checkout' | 'whatsapp' | 'loyalty' | 'perms';
+const FOLDS_KEY = 'nelya_settings_folds_v4';
 const DEFAULT_FOLDS: Record<SettingsFold, boolean> = {
-  perms: false, hero: false, currency: false, checkout: false, whatsapp: false, loyalty: false
+  perms: false, currency: false, checkout: false, whatsapp: false, loyalty: false
 };
 
 @Component({
   selector: 'app-admin-settings',
   standalone: true,
   imports: [
-    CommonModule, MatCardModule, MatButtonModule, MatIconModule, MatRadioModule,
+    CommonModule, RouterLink, MatCardModule, MatButtonModule, MatIconModule, MatRadioModule,
     MatCheckboxModule, MatFormFieldModule, MatInputModule, MatSelectModule, FormsModule,
-    MatSnackBarModule, FormatCurrencyPipe, ImageUrlPipe
+    MatSnackBarModule, FormatCurrencyPipe
   ],
   template: `
     <div class="settings-page fade-in">
-      <p class="lead">Image d’accueil, devise, commande, fidélité, WhatsApp et groupes de permissions. Cliquez un titre pour masquer une carte.</p>
+      <p class="lead">Devise, commande, fidélité, WhatsApp et groupes de permissions. Cliquez un titre pour masquer une carte.</p>
+
+      <a class="identity-link" routerLink="/admin/identity">
+        <mat-icon>palette</mat-icon>
+        <span>
+          <strong>Identité du site</strong>
+          <small>Logo, couleurs, page d’accueil, textes et coordonnées</small>
+        </span>
+        <mat-icon>arrow_forward</mat-icon>
+      </a>
 
       <div class="cards">
 
@@ -101,36 +109,6 @@ const DEFAULT_FOLDS: Record<SettingsFold, boolean> = {
         </button>
         </div>
       </article>
-
-          <article class="card" [class.open]="isOpen('hero')">
-            <button type="button" class="card-head" (click)="toggle('hero')">
-              <span class="card-icon"><mat-icon>image</mat-icon></span>
-              <span class="card-titles">
-                <h2>Page d’accueil</h2>
-                <p>Bandeau plein écran, idéalement 2000 × 1200 px.</p>
-              </span>
-              <mat-icon class="chevron">expand_more</mat-icon>
-            </button>
-            <div class="card-body" *ngIf="isOpen('hero')">
-
-            <div class="hero-preview">
-              <img *ngIf="heroImage" [src]="heroImage | imageUrl" alt="Aperçu de l’accueil">
-              <span *ngIf="!heroImage">Aucune image</span>
-            </div>
-
-            <div class="hero-actions">
-              <input type="file" hidden #heroInput accept="image/*" (change)="onHeroSelected($event)">
-              <button type="button" mat-stroked-button [disabled]="uploadingHero" (click)="heroInput.click()">
-                <mat-icon>upload</mat-icon>
-                {{ uploadingHero ? 'Envoi…' : 'Choisir une image' }}
-              </button>
-              <button type="button" mat-button [disabled]="savingHero || heroImage === defaultHeroImage"
-                (click)="resetHeroImage()">
-                Image par défaut
-              </button>
-            </div>
-            </div>
-          </article>
 
           <article class="card" [class.open]="isOpen('currency')">
             <button type="button" class="card-head" (click)="toggle('currency')">
@@ -374,7 +352,16 @@ const DEFAULT_FOLDS: Record<SettingsFold, boolean> = {
   `,
   styles: [`
     .settings-page { padding: 0 0 32px; width: 100%; min-width: 0; }
-    .lead { margin: 0 0 28px; color: var(--luxe-text-muted); font-weight: 300; font-size: 0.95rem; }
+    .lead { margin: 0 0 20px; color: var(--luxe-text-muted); font-weight: 300; font-size: 0.95rem; }
+    .identity-link {
+      display: flex; align-items: center; gap: 14px;
+      padding: 16px 18px; border-radius: 16px; text-decoration: none;
+      background: var(--luxe-black); color: #fff; margin-bottom: 20px;
+    }
+    .identity-link strong { display: block; font-size: 0.95rem; }
+    .identity-link small { display: block; color: rgba(255,255,255,0.65); margin-top: 2px; }
+    .identity-link > span { flex: 1; }
+    .identity-link mat-icon { color: var(--luxe-gold); }
 
     .cards {
       display: grid;
@@ -453,6 +440,29 @@ const DEFAULT_FOLDS: Record<SettingsFold, boolean> = {
     .hero-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .hero-preview span { color: var(--luxe-text-muted); font-size: 0.85rem; }
     .hero-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .site-mod {
+      padding: 0 0 22px; margin: 0 0 22px;
+      border-bottom: 1px solid var(--luxe-border);
+    }
+    .site-mod.last { border-bottom: none; margin: 0; padding: 0; }
+    .site-mod h3 {
+      margin: 0 0 6px; font-size: 0.78rem; letter-spacing: 1.4px;
+      text-transform: uppercase; color: var(--luxe-black); font-weight: 700;
+    }
+    .site-mod .hint {
+      margin: 0 0 14px; font-size: 0.8rem; font-weight: 300;
+      color: var(--luxe-text-muted); line-height: 1.45;
+    }
+    .logo-preview {
+      margin: 0 0 14px; border: 1px solid var(--luxe-border);
+      background: #f7f4ec; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-preview.round { width: 88px; height: 88px; border-radius: 50%; }
+    .logo-preview.rect { width: 148px; height: 148px; border-radius: 14px; }
+    .logo-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .logo-preview.rect img { object-fit: contain; }
+    .tagline-field { width: 100%; }
 
     .choice-list { display: flex; flex-direction: column; gap: 10px; margin-top: 0; }
     .choice {
@@ -610,6 +620,7 @@ export class AdminSettingsComponent implements OnInit {
   savingLoyalty = false;
 
   permissionCatalog: PermissionDef[] = [
+    { key: 'admin.access', section: 'Accès', label: 'Voir l’espace administration' },
     { key: 'orders.update_status', section: 'Commandes', label: 'Changer le statut (attente, confirmée, expédiée, livrée)' },
     { key: 'orders.cancel', section: 'Commandes', label: 'Annuler une commande' },
     { key: 'products.manage', section: 'Catalogue', label: 'Créer et modifier les produits' },
@@ -620,21 +631,15 @@ export class AdminSettingsComponent implements OnInit {
   ];
   permissionGroups: PermissionGroup[] = [
     { id: 'admin', name: 'Administrateur', system: true, permissions: ['*'] },
-    { id: 'seller', name: 'Employé', system: true, permissions: ['orders.update_status', 'orders.cancel', 'products.manage', 'stock.manage', 'categories.manage', 'reviews.manage'] }
+    { id: 'seller', name: 'Employé', system: true, permissions: ['admin.access', 'orders.update_status', 'orders.cancel', 'products.manage', 'stock.manage', 'categories.manage', 'reviews.manage'] }
   ];
   newGroupName = '';
   savingPerms = false;
-
-  heroImage = DEFAULT_HERO_IMAGE;
-  readonly defaultHeroImage = DEFAULT_HERO_IMAGE;
-  uploadingHero = false;
-  savingHero = false;
   folds: Record<SettingsFold, boolean> = { ...DEFAULT_FOLDS };
 
   constructor(
     private settings: SettingsService,
     private snackBar: MatSnackBar,
-    private api: ApiService,
     private confirm: ConfirmService
   ) {}
 
@@ -666,10 +671,6 @@ export class AdminSettingsComponent implements OnInit {
 
     this.settings.loyaltyTiers$.subscribe((tiers: LoyaltyTier[]) => {
       this.loyaltyTiers = (tiers || DEFAULT_LOYALTY_TIERS).map(t => ({ ...t }));
-    });
-
-    this.settings.heroImage$.subscribe((url) => {
-      this.heroImage = url || DEFAULT_HERO_IMAGE;
     });
 
     this.settings.loadAccess().then((access) => {
@@ -727,7 +728,7 @@ export class AdminSettingsComponent implements OnInit {
         id: `grp_${Date.now().toString(36)}`,
         name,
         system: false,
-        permissions: ['orders.update_status']
+        permissions: ['admin.access', 'orders.update_status']
       }
     ];
     this.newGroupName = '';
@@ -939,39 +940,4 @@ export class AdminSettingsComponent implements OnInit {
     });
   }
 
-  onHeroSelected(event: Event) {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('image', file);
-    formData.append('purpose', 'hero');
-    this.uploadingHero = true;
-    this.api.post<{ url: string }>('uploads', formData).subscribe({
-      next: (res) => {
-        this.uploadingHero = false;
-        this.persistHero(res.url, 'Image d’accueil mise à jour');
-      },
-      error: (err) => {
-        this.uploadingHero = false;
-        this.snackBar.open(err?.error?.message || 'Envoi de l’image impossible', 'Fermer', { duration: 4000 });
-      }
-    });
-  }
-
-  resetHeroImage() {
-    this.persistHero('', 'Image d’accueil rétablie');
-  }
-
-  private persistHero(url: string, okMessage: string) {
-    this.savingHero = true;
-    this.settings.save({ heroImage: url }).then(() => {
-      this.savingHero = false;
-      this.snackBar.open(okMessage, 'OK', { duration: 3000 });
-    }).catch((err) => {
-      this.savingHero = false;
-      this.snackBar.open(err?.error?.message || 'Impossible d’enregistrer l’image', 'Fermer', { duration: 4000 });
-    });
-  }
 }

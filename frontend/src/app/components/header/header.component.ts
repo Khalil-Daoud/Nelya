@@ -9,15 +9,19 @@ import { CartService } from '../../services/cart.service';
 import { AuthService } from '../../services/auth.service';
 import { WishlistService } from '../../services/wishlist.service';
 import { CrudService } from '../../services/crud.service';
+import { BrandService } from '../../services/brand.service';
+import { ImageUrlPipe } from '../../pipes/image-url.pipe';
 
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, MatBadgeModule, MatButtonModule, MatIconModule, MatMenuModule],
+  imports: [CommonModule, RouterLink, RouterLinkActive, MatBadgeModule, MatButtonModule, MatIconModule, MatMenuModule, ImageUrlPipe],
   template: `
     <nav class="luxe-nav" [class.scrolled]="scrolled">
       <div class="luxe-nav-inner">
-        <a class="luxe-logo" routerLink="/">NELYA</a>
+        <a class="luxe-logo" routerLink="/" [attr.aria-label]="brand.name + ' — accueil'">
+          <img [src]="brand.logoUrl | imageUrl" [alt]="brand.name">
+        </a>
 
         <div class="luxe-nav-links" [class.open]="mobileOpen">
           <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}" (click)="mobileOpen = false">ACCUEIL</a>
@@ -29,12 +33,27 @@ import { CrudService } from '../../services/crud.service';
             <button mat-menu-item routerLink="/collection" (click)="mobileOpen = false">
               <mat-icon>grid_view</mat-icon> Tous les produits
             </button>
-            <button mat-menu-item *ngFor="let cat of categories" [routerLink]="['/collection']" [queryParams]="{cat: cat}" (click)="mobileOpen = false">
-              <mat-icon>arrow_forward_ios</mat-icon> {{ cat }}
-            </button>
+            <ng-container *ngFor="let cat of navTree">
+              <button mat-menu-item *ngIf="!cat.children.length" [routerLink]="['/collection']" [queryParams]="{cat: cat.name}" (click)="mobileOpen = false">
+                <mat-icon>arrow_forward_ios</mat-icon> {{ cat.name }}
+              </button>
+              <button mat-menu-item *ngIf="cat.children.length" [matMenuTriggerFor]="childMenu" [matMenuTriggerData]="{ cat: cat }">
+                <mat-icon>arrow_forward_ios</mat-icon> {{ cat.name }}
+              </button>
+            </ng-container>
+          </mat-menu>
+          <mat-menu #childMenu="matMenu">
+            <ng-template matMenuContent let-cat="cat">
+              <button mat-menu-item [routerLink]="['/collection']" [queryParams]="{cat: cat.name}" (click)="mobileOpen = false">
+                Tout {{ cat.name }}
+              </button>
+              <button mat-menu-item *ngFor="let child of cat.children" [routerLink]="['/collection']" [queryParams]="{cat: cat.name, sub: child.name}" (click)="mobileOpen = false">
+                {{ child.name }}
+              </button>
+            </ng-template>
           </mat-menu>
 
-          <a routerLink="/collection" *ngIf="categories.length === 0" routerLinkActive="active">BOUTIQUE</a>
+          <a routerLink="/collection" *ngIf="navTree.length === 0" routerLinkActive="active">BOUTIQUE</a>
           <a routerLink="/auth/login" *ngIf="!isLoggedIn" (click)="mobileOpen = false">CONNEXION</a>
 
           <form class="luxe-mobile-search" (submit)="search(searchInput.value); $event.preventDefault()" *ngIf="mobileOpen">
@@ -66,7 +85,7 @@ import { CrudService } from '../../services/crud.service';
           </button>
           <mat-menu #profileMenu="matMenu" xPosition="before">
             <button mat-menu-item routerLink="/profile"><mat-icon>account_circle</mat-icon> Mon Profil</button>
-            <button mat-menu-item routerLink="/admin" *ngIf="isAdmin"><mat-icon>admin_panel_settings</mat-icon> Administration</button>
+            <button mat-menu-item routerLink="/admin" *ngIf="canAccessAdmin"><mat-icon>admin_panel_settings</mat-icon> Administration</button>
             <button mat-menu-item (click)="logout()"><mat-icon>logout</mat-icon> Déconnexion</button>
           </mat-menu>
 
@@ -99,9 +118,12 @@ import { CrudService } from '../../services/crud.service';
       display: flex; align-items: center; justify-content: space-between; gap: 24px;
     }
     .luxe-logo {
-      font-family: var(--font-heading); font-size: 1.75rem; font-weight: 700;
-      letter-spacing: 8px; color: var(--luxe-black); text-decoration: none;
-      text-transform: uppercase; white-space: nowrap;
+      display: flex; align-items: center; flex-shrink: 0;
+      text-decoration: none; line-height: 0;
+    }
+    .luxe-logo img {
+      height: 64px; width: 64px; display: block;
+      object-fit: cover; border-radius: 50%;
     }
     .luxe-nav-links { display: flex; align-items: center; gap: 32px; margin: 0 auto; }
     .luxe-nav-links a, .nav-trigger {
@@ -201,9 +223,9 @@ export class HeaderComponent implements OnInit {
   cartCount = 0;
   wishlistCount = 0;
   isLoggedIn = false;
-  isAdmin = false;
+  canAccessAdmin = false;
   loyaltyPoints: number | null = null;
-  categories: string[] = [];
+  navTree: { name: string; children: { name: string }[] }[] = [];
   scrolled = false;
   mobileOpen = false;
   searchOpen = false;
@@ -213,6 +235,7 @@ export class HeaderComponent implements OnInit {
     private authService: AuthService,
     private wishlistService: WishlistService,
     private crudService: CrudService,
+    public brand: BrandService,
     private router: Router
   ) {}
 
@@ -224,16 +247,22 @@ export class HeaderComponent implements OnInit {
     this.authService.refreshMe();
     this.authService.currentUser$.subscribe(user => {
       this.isLoggedIn = !!user;
-      this.isAdmin = user?.role === 'admin';
+      this.canAccessAdmin = this.authService.canAccessAdmin;
       this.loyaltyPoints = user?.role === 'client' ? Number(user.loyalty_points || 0) : null;
     });
     this.crudService.getAll<any>('categories').subscribe({
       next: categories => {
-        this.categories = categories
-          .map(c => c.name)
-          .filter(c => c && c !== 'Promotions');
+        const visible = categories.filter((c: any) => c.name && c.name !== 'Promotions');
+        this.navTree = visible
+          .filter((c: any) => !c.parent_id)
+          .map((root: any) => ({
+            name: root.name,
+            children: visible
+              .filter((child: any) => child.parent_id === root.id)
+              .map((child: any) => ({ name: child.name }))
+          }));
       },
-      error: () => { this.categories = []; }
+      error: () => { this.navTree = []; }
     });
   }
 

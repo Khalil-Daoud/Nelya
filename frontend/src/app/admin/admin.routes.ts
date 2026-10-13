@@ -50,6 +50,12 @@ export const ADMIN_ROUTES: Routes = [
         canActivate: [RoleGuard],
         data: { roles: ['admin'] }
       },
+      {
+        path: 'identity',
+        loadComponent: () => import('./identity-manager/identity-manager.component').then(m => m.IdentityManagerComponent),
+        canActivate: [RoleGuard],
+        data: { roles: ['admin'] }
+      },
       { path: '**', redirectTo: 'dashboard' }
     ]
   }

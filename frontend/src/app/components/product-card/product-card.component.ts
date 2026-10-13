@@ -17,6 +17,7 @@ import { SettingsService } from '../../services/settings.service';
     <div class="pcard" [routerLink]="['/products', product.id]">
       <div class="pcard-media">
         <img [src]="product.image_url | imageUrl" [alt]="product.name" loading="lazy">
+        <img *ngIf="secondImage" class="pcard-alt" [src]="secondImage | imageUrl" [alt]="product.name" loading="lazy">
         <div class="pcard-badge" *ngIf="product.category === 'Promotions'">PROMO</div>
         <button class="pcard-wish" [class.active]="wishlisted"
           (click)="$event.stopPropagation(); toggleWish()"
@@ -59,8 +60,10 @@ import { SettingsService } from '../../services/settings.service';
       border-color: var(--luxe-gold);
     }
     .pcard-media { position: relative; aspect-ratio: 4 / 5; overflow: hidden; background: var(--luxe-light-grey); }
-    .pcard-media img { width: 100%; height: 100%; object-fit: cover; transition: transform 1s ease; }
+    .pcard-media img { width: 100%; height: 100%; object-fit: cover; transition: transform 1s ease, opacity 0.45s ease; }
+    .pcard-media .pcard-alt { position: absolute; inset: 0; opacity: 0; }
     .pcard:hover .pcard-media img { transform: scale(1.05); }
+    .pcard:hover .pcard-media .pcard-alt { opacity: 1; }
     .pcard-badge {
       position: absolute; top: 14px; left: 14px;
       background: var(--luxe-gold); color: var(--luxe-black);
@@ -119,6 +122,12 @@ export class ProductCardComponent {
 
   get pointsForProduct(): number {
     return this.settings.pointsForPrice(this.product?.price);
+  }
+
+  get secondImage(): string {
+    const gallery = this.product?.images;
+    if (Array.isArray(gallery) && gallery.length > 1) return gallery[1];
+    return '';
   }
 
   ngOnInit() {

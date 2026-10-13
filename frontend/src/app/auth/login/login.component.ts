@@ -9,6 +9,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { AuthService } from '../../services/auth.service';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { BrandService } from '../../services/brand.service';
+import { ImageUrlPipe } from '../../pipes/image-url.pipe';
 
 @Component({
   selector: 'app-login',
@@ -22,7 +24,8 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
     MatInputModule,
     MatButtonModule,
     MatIconModule,
-    MatSnackBarModule
+    MatSnackBarModule,
+    ImageUrlPipe
   ],
   template: `
     <div class="auth-page">
@@ -31,8 +34,8 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
         <div class="brand-panel">
           <div class="brand-glow"></div>
           <div class="brand-content-wrapper">
-            <h1 class="brand-logo-large">NELYA</h1>
-            <p class="brand-tagline">L'Excellence de la Cosmétique & Soins de Luxe</p>
+            <img class="brand-logo-large" [src]="brand.logoFullUrl | imageUrl" [alt]="brand.name">
+            <p class="brand-tagline">{{ brand.copy.heroSubtitle || brand.copy.footerBlurb }}</p>
             <div class="line-gold"></div>
             <div class="brand-features">
               <div class="feature-item">
@@ -59,14 +62,14 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
             </div>
           </div>
           <div class="brand-footer">
-            <span>© 2026 NELYA. TOUS DROITS RÉSERVÉS</span>
+            <span>© {{ brand.year }} {{ brand.legalName }}. TOUS DROITS RÉSERVÉS</span>
           </div>
         </div>
 
         <!-- Right Form Section -->
         <div class="form-panel">
           <div class="form-container fade-in">
-            <div class="mobile-logo">NELYA</div>
+            <img class="mobile-logo" [src]="brand.logoFullUrl | imageUrl" [alt]="brand.name">
             <div class="form-header">
               <h2>Connexion</h2>
               <p>Entrez vos identifiants pour accéder à votre espace.</p>
@@ -139,16 +142,12 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
       margin-bottom: auto;
     }
     .brand-logo-large {
-      font-family: var(--font-heading);
-      font-size: 3.5rem;
-      letter-spacing: 12px;
-      margin-bottom: 20px;
-      font-weight: 400;
-      line-height: 1.2;
-      padding: 5px 0;
-      background: linear-gradient(to right, #ffffff, var(--luxe-gold));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      height: 220px;
+      width: auto;
+      display: block;
+      margin-bottom: 24px;
+      border-radius: 16px;
+      background: #f7f4ec;
     }
     .brand-tagline {
       font-size: 1.1rem;
@@ -213,12 +212,9 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
     }
     .mobile-logo {
       display: none;
-      font-family: var(--font-heading);
-      font-size: 2rem;
-      letter-spacing: 6px;
-      color: var(--luxe-black);
-      text-align: center;
-      margin-bottom: 40px;
+      height: 140px;
+      width: auto;
+      margin: 0 auto 32px;
     }
     .form-header {
       margin-bottom: 45px;
@@ -293,7 +289,8 @@ export class LoginComponent {
     private fb: FormBuilder,
     private authService: AuthService,
     private router: Router,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    public brand: BrandService
   ) {
     this.loginForm = this.fb.group({
       email: ['', [Validators.required, Validators.email]],
@@ -307,7 +304,7 @@ export class LoginComponent {
       this.authService.login(this.loginForm.value).subscribe({
         next: () => {
           this.snackBar.open('Connexion réussie !', 'Fermer', { duration: 3000 });
-          this.router.navigate(['/']);
+          this.router.navigate([this.authService.homeAfterLogin()]);
         },
         error: (err) => {
           this.isLoading = false;

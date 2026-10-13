@@ -71,11 +71,12 @@ router.post('/', auth, authorize('admin', 'seller'), (req, res, next) => {
     try {
       const purpose = String(req.body?.purpose || '').toLowerCase();
       const isHero = purpose === 'hero';
+      const isLogo = purpose === 'logo' || purpose === 'lockup';
       const { buffer, info, source } = await compressToWebp(req.file.buffer, {
-        maxWidth: isHero ? 2000 : MAX_WIDTH,
-        maxHeight: isHero ? 1400 : MAX_HEIGHT
+        maxWidth: isHero ? 2000 : isLogo ? 900 : MAX_WIDTH,
+        maxHeight: isHero ? 1400 : isLogo ? 900 : MAX_HEIGHT
       });
-      const filename = `${isHero ? 'hero' : 'product'}_${Date.now()}_${Math.round(Math.random() * 1e9)}.webp`;
+      const filename = `${isHero ? 'hero' : isLogo ? 'logo' : 'product'}_${Date.now()}_${Math.round(Math.random() * 1e9)}.webp`;
 
       await fs.promises.writeFile(path.join(uploadDir, filename), buffer);
 

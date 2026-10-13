@@ -4,7 +4,6 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, debounceTime, switchMap, takeUntil, tap } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatChipsModule } from '@angular/material/chips';
 import { MatSliderModule } from '@angular/material/slider';
 import { FormsModule } from '@angular/forms';
 import { CrudService } from '../../services/crud.service';
@@ -20,17 +19,18 @@ const SORT_PARAMS: Record<string, string> = {
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
 import { BreadcrumbComponent, Crumb } from '../../components/breadcrumb/breadcrumb.component';
 import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
+import { BrandService } from '../../services/brand.service';
 
 @Component({
   selector: 'app-collection',
   standalone: true,
-  imports: [CommonModule, RouterLink, MatButtonModule, MatIconModule, MatChipsModule, MatSliderModule, FormsModule, ProductCardComponent, BreadcrumbComponent, FormatCurrencyPipe],
+  imports: [CommonModule, RouterLink, MatButtonModule, MatIconModule, MatSliderModule, FormsModule, ProductCardComponent, BreadcrumbComponent, FormatCurrencyPipe],
   template: `
     <div class="collection-page">
       <header class="collection-hero">
         <div class="container">
           <app-breadcrumb [crumbs]="breadcrumbs"></app-breadcrumb>
-          <span class="collection-eyebrow">COLLECTION NELYA</span>
+          <span class="collection-eyebrow">COLLECTION {{ brand.name | uppercase }}</span>
           <h1>{{ pageTitle }}</h1>
           <p>{{ pageSubtitle }}</p>
         </div>
@@ -48,12 +48,23 @@ import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
 
           <div class="filter-group">
             <h4 class="filter-title">Catégories</h4>
-            <mat-chip-listbox (change)="onCategoryChange($event.value)" [value]="selectedCategory">
-              <mat-chip-option value="all">Tout voir</mat-chip-option>
-              <mat-chip-option *ngFor="let cat of categories" [value]="cat.name">
-                {{cat.name}} ({{cat.count}})
-              </mat-chip-option>
-            </mat-chip-listbox>
+            <button type="button" class="filter-link" [class.active]="selectedCategory === 'all'" (click)="selectCategory('all')">
+              Tout voir
+            </button>
+            <div class="filter-cat" *ngFor="let cat of categories">
+              <button type="button" class="filter-link" [class.active]="isParentSelected(cat.name)" (click)="selectCategory(cat.name)">
+                <span>{{ cat.name }}</span>
+                <span class="filter-count">{{ cat.count }}</span>
+              </button>
+              <div class="filter-subs" *ngIf="cat.children?.length">
+                <button type="button" class="filter-sub" *ngFor="let sub of cat.children"
+                  [class.active]="selectedSub === sub.name"
+                  (click)="selectSub(cat.name, sub.name)">
+                  <span>{{ sub.name }}</span>
+                  <span class="filter-count">{{ sub.count }}</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="filter-group">
@@ -154,6 +165,16 @@ import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
     .filter-head { display: none; }
     .filter-group { padding: 26px 0; border-bottom: 1px solid var(--luxe-border); }
     .filter-title { font-family: var(--font-heading); font-size: 1.15rem; margin: 0 0 20px; color: var(--luxe-charcoal); font-weight: 500; }
+    .filter-cat { margin-bottom: 10px; }
+    .filter-link, .filter-sub {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      width: 100%; background: none; border: none; padding: 7px 0; cursor: pointer;
+      font-family: var(--font-body); font-size: 0.92rem; color: var(--luxe-charcoal); text-align: left;
+    }
+    .filter-link.active, .filter-sub.active { color: var(--luxe-gold); font-weight: 600; }
+    .filter-subs { padding: 2px 0 6px 16px; border-left: 1px solid var(--luxe-border); margin: 2px 0 8px 4px; }
+    .filter-sub { font-size: 0.86rem; color: var(--luxe-text-muted); }
+    .filter-count { font-size: 0.75rem; color: var(--luxe-text-muted); font-weight: 500; }
     .filter-range { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--luxe-text-muted); margin-top: 8px; }
     .filter-promo {
       margin-top: 20px; padding: 34px 24px; text-align: center; border-radius: var(--radius-lg);
@@ -237,6 +258,7 @@ export class CollectionComponent implements OnInit, OnDestroy {
   categories: CategoryCount[] = [];
   total = 0;
   selectedCategory: string = 'all';
+  selectedSub: string = '';
   searchTerm: string = '';
   sortBy: string = 'featured';
   priceMin: number = 0;
@@ -260,14 +282,19 @@ export class CollectionComponent implements OnInit, OnDestroy {
   constructor(
     private route: ActivatedRoute,
     private router: Router,
-    private crud: CrudService
+    private crud: CrudService,
+    public brand: BrandService
   ) {}
 
   get pageTitle(): string {
+    if (this.selectedSub) return this.selectedSub;
     return this.selectedCategory === 'all' ? 'La Boutique' : this.selectedCategory;
   }
 
   get pageSubtitle(): string {
+    if (this.selectedSub) {
+      return `Notre sélection ${this.selectedCategory} · ${this.selectedSub}.`;
+    }
     return this.selectedCategory === 'all'
       ? 'Explorez notre gamme complète de soins d\'exception.'
       : `Notre sélection dans la catégorie ${this.selectedCategory}.`;
@@ -275,13 +302,21 @@ export class CollectionComponent implements OnInit, OnDestroy {
 
   get breadcrumbs() {
     const crumbs: Crumb[] = [{ label: 'Boutique', url: '/collection' }];
-    if (this.selectedCategory !== 'all') crumbs.push({ label: this.selectedCategory });
+    if (this.selectedCategory !== 'all') {
+      crumbs.push({
+        label: this.selectedCategory,
+        url: this.selectedSub ? '/collection' : undefined,
+        queryParams: this.selectedSub ? { cat: this.selectedCategory } : undefined
+      });
+    }
+    if (this.selectedSub) crumbs.push({ label: this.selectedSub });
     return crumbs;
   }
 
   get activeFilterCount(): number {
     let n = 0;
     if (this.selectedCategory !== 'all') n++;
+    if (this.selectedSub) n++;
     if (this.maxPriceDisplay < this.priceMax) n++;
     if (this.searchTerm) n++;
     return n;
@@ -324,7 +359,8 @@ export class CollectionComponent implements OnInit, OnDestroy {
 
     this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe(params => {
       if (params['q'] !== undefined) this.searchTerm = params['q'];
-      if (params['cat'] !== undefined) this.selectedCategory = params['cat'];
+      this.selectedCategory = params['cat'] || 'all';
+      this.selectedSub = params['sub'] || '';
       this.reload();
     });
   }
@@ -355,6 +391,7 @@ export class CollectionComponent implements OnInit, OnDestroy {
       limit: this.pageSize,
       search: this.searchTerm.trim() || undefined,
       category: this.selectedCategory === 'all' ? undefined : this.selectedCategory,
+      subcategory: this.selectedSub || undefined,
       // Au plafond, aucun filtre de prix n'est envoyé : inutile de restreindre
       // avec une borne égale au prix le plus élevé du catalogue.
       price_max: this.maxPriceDisplay < this.priceMax ? this.maxPriceDisplay : undefined,
@@ -370,9 +407,24 @@ export class CollectionComponent implements OnInit, OnDestroy {
     this.priceChange$.next();
   }
 
+  isParentSelected(name: string): boolean {
+    return this.selectedCategory === name && !this.selectedSub;
+  }
+
+  selectCategory(cat: string) {
+    this.filtersOpen = false;
+    this.router.navigate(['/collection'], {
+      queryParams: cat === 'all' ? {} : { cat }
+    });
+  }
+
+  selectSub(cat: string, sub: string) {
+    this.filtersOpen = false;
+    this.router.navigate(['/collection'], { queryParams: { cat, sub } });
+  }
+
   onCategoryChange(cat: string) {
-    this.selectedCategory = cat || 'all';
-    this.reload();
+    this.selectCategory(cat || 'all');
   }
 
   showMore() {
@@ -392,6 +444,7 @@ export class CollectionComponent implements OnInit, OnDestroy {
 
   resetFilters() {
     this.selectedCategory = 'all';
+    this.selectedSub = '';
     this.searchTerm = '';
     this.maxPriceDisplay = this.priceMax;
     this.sortBy = 'featured';

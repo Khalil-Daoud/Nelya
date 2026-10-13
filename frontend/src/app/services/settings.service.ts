@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, firstValueFrom } from 'rxjs';
 import { ApiService } from './api.service';
+import { BrandService, ClientConfig } from './brand.service';
 
 export interface Currency {
   code: string;
@@ -40,6 +41,10 @@ export interface StoreSettings {
   currency: Currency;
   guestCheckout: boolean;
   heroImage?: string;
+  logo?: string;
+  logoFull?: string;
+  tagline?: string;
+  identity?: ClientConfig;
   checkoutFields?: CheckoutField[];
   loyalty?: { tiers: LoyaltyTier[] };
   whatsapp: WhatsAppSettings;
@@ -47,6 +52,10 @@ export interface StoreSettings {
 
 export const DEFAULT_HERO_IMAGE =
   'https://images.unsplash.com/photo-1612817288484-6f916006741a?auto=format&fit=crop&q=80&w=2000';
+export const DEFAULT_LOGO = 'assets/images/nelya-mark.png';
+export const DEFAULT_LOGO_FULL = 'assets/images/nelya.png';
+export const DEFAULT_TAGLINE =
+  "L'excellence de la cosmétique naturelle tunisienne. Des soins formulés avec passion pour révéler votre beauté intérieure.";
 
 const DEFAULT_CURRENCY: Currency = { code: 'EUR', symbol: '€', label: 'Euro' };
 const DEFAULT_WHATSAPP: WhatsAppSettings = {
@@ -82,6 +91,10 @@ export interface SettingsPayload {
   loyaltyTiers?: LoyaltyTier[];
   checkoutFields?: CheckoutField[];
   heroImage?: string;
+  logo?: string;
+  logoFull?: string;
+  tagline?: string;
+  identity?: ClientConfig;
   permissionGroups?: PermissionGroup[];
 }
 
@@ -121,7 +134,16 @@ export class SettingsService {
   private heroImageSubject = new BehaviorSubject<string>(DEFAULT_HERO_IMAGE);
   public heroImage$ = this.heroImageSubject.asObservable();
 
-  constructor(private api: ApiService) {}
+  private logoSubject = new BehaviorSubject<string>(DEFAULT_LOGO);
+  public logo$ = this.logoSubject.asObservable();
+
+  private logoFullSubject = new BehaviorSubject<string>(DEFAULT_LOGO_FULL);
+  public logoFull$ = this.logoFullSubject.asObservable();
+
+  private taglineSubject = new BehaviorSubject<string>(DEFAULT_TAGLINE);
+  public tagline$ = this.taglineSubject.asObservable();
+
+  constructor(private api: ApiService, private brand: BrandService) {}
 
   load(): Promise<void> {
     return firstValueFrom(this.api.get<StoreSettings>('settings'))
@@ -151,6 +173,18 @@ export class SettingsService {
 
   get heroImage(): string {
     return this.heroImageSubject.value || DEFAULT_HERO_IMAGE;
+  }
+
+  get logo(): string {
+    return this.logoSubject.value || DEFAULT_LOGO;
+  }
+
+  get logoFull(): string {
+    return this.logoFullSubject.value || DEFAULT_LOGO_FULL;
+  }
+
+  get tagline(): string {
+    return this.taglineSubject.value || DEFAULT_TAGLINE;
   }
 
   pointsForPrice(price: number): number {
@@ -221,6 +255,15 @@ export class SettingsService {
     );
     if (settings?.heroImage) {
       this.heroImageSubject.next(settings.heroImage);
+    }
+    this.logoSubject.next(settings?.logo || DEFAULT_LOGO);
+    this.logoFullSubject.next(settings?.logoFull || DEFAULT_LOGO_FULL);
+    this.taglineSubject.next((settings?.tagline || '').trim() || DEFAULT_TAGLINE);
+    if (settings?.identity) {
+      this.brand.applyConfig(settings.identity);
+      this.logoSubject.next(settings.identity.brand?.logo || this.logoSubject.value);
+      this.logoFullSubject.next(settings.identity.brand?.logoFull || this.logoFullSubject.value);
+      this.taglineSubject.next(settings.identity.copy?.footerBlurb || this.taglineSubject.value);
     }
   }
 }

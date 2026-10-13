@@ -283,7 +283,17 @@ html { scrollbar-width: thin; scrollbar-color: #d8d8d8 var(--luxe-offwhite); }
   transition: transform 0.6s ease;
 }
 .mat-mdc-raised-button.mat-primary:hover::after { transform: translateX(100%); }
-.mat-mdc-raised-button.mat-primary:disabled { background-color: #d9d9d9 !important; color: #9a9a9a !important; }
+.mat-mdc-unelevated-button.mat-primary:disabled,
+.mat-mdc-raised-button.mat-primary:disabled,
+.mat-flat-button.mat-primary:disabled,
+.mat-mdc-unelevated-button.mat-primary[disabled],
+.mat-mdc-raised-button.mat-primary[disabled] {
+  background-color: #e4e4e4 !important;
+  color: #9a9a9a !important;
+  box-shadow: none !important;
+  transform: none !important;
+  cursor: not-allowed !important;
+}
 
 /* Bouton accent (or plein) */
 .mat-mdc-raised-button.mat-accent {

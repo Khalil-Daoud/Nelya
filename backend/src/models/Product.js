@@ -36,8 +36,17 @@ const Product = sequelize.define('Product', {
   image_url: {
     type: DataTypes.STRING
   },
+  images: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: []
+  },
   category: {
     type: DataTypes.STRING
+  },
+  subcategory: {
+    type: DataTypes.STRING,
+    allowNull: true
   }
 }, {
   timestamps: true,

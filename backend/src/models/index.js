@@ -11,6 +11,8 @@ const Review = require('./Review');
 // Relations Catégorie ↔ Produit
 Category.hasMany(Product, { foreignKey: 'category_id' });
 Product.belongsTo(Category, { foreignKey: 'category_id' });
+Category.belongsTo(Category, { as: 'parent', foreignKey: 'parent_id' });
+Category.hasMany(Category, { as: 'children', foreignKey: 'parent_id' });
 
 // [BUG-006 FIX] Relations User ↔ Order ↔ OrderItem
 User.hasMany(Order, { foreignKey: 'user_id' });

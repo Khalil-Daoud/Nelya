@@ -10,6 +10,7 @@ const { Product, Category } = require('../models');
 const { parseCsv, normalizeHeader, parsePrice } = require('../utils/csv');
 const { parseSpreadsheet } = require('../utils/spreadsheet');
 const audit = require('../services/auditService');
+const { normalizeProductImages } = require('../utils/productImages');
 
 const router = express.Router();
 
@@ -36,11 +37,15 @@ const upload = multer({
 const COLUMN_ALIASES = {
   reference: ['ref', 'reference', 'refarticle', 'code', 'codearticle', 'sku'],
   category: ['categorie', 'category', 'famille', 'rayon'],
+  subcategory: ['souscategorie', 'subcategory', 'souscat', 'sousfamille', 'sousrayon'],
   name: ['designation', 'designationproduit', 'nom', 'nomproduit', 'libelle', 'produit', 'name'],
   contenance: ['contenance', 'volume', 'poids', 'format', 'taille'],
   price: ['prix', 'price', 'prixttc', 'prixvente', 'prixunitaire', 'pu'],
   cost_price: ['prixachat', 'prixdachat', 'cout', 'cost', 'costprice', 'pa', 'prixrevient'],
-  image: ['image', 'imageurl', 'urlimage', 'photo', 'lienimage'],
+  image: ['image', 'imageurl', 'urlimage', 'photo', 'lienimage', 'images'],
+  image2: ['image2', 'photo2', 'image_2', 'photo_2'],
+  image3: ['image3', 'photo3', 'image_3', 'photo_3'],
+  image4: ['image4', 'photo4', 'image_4', 'photo_4'],
   stock: ['stock', 'quantite', 'qte', 'qty', 'quantity'],
   description: ['description', 'desc', 'details', 'detail']
 };
@@ -144,20 +149,20 @@ async function unpackImport(file) {
   };
 }
 
-async function resolveCategory(rawName, cache, createdCategories) {
+async function resolveCategory(rawName, cache, createdCategories, parentId = null) {
   const name = String(rawName || '').trim();
   if (!name) return '';
 
-  const key = name.toLowerCase();
+  const key = `${parentId || ''}::${name.toLowerCase()}`;
   if (cache.has(key)) return cache.get(key);
 
   let category = await Category.findOne({ where: { name: { [Op.iLike]: name } } });
   if (!category) {
-    category = await Category.create({ name });
-    createdCategories.push(category.name);
+    category = await Category.create({ name, parent_id: parentId || null });
+    createdCategories.push(parentId ? name : category.name);
   }
-  cache.set(key, category.name);
-  return category.name;
+  cache.set(key, category);
+  return category;
 }
 
 router.post('/import', auth, authorize('admin', 'seller'), requirePermission('products.manage'), (req, res) => {
@@ -235,6 +240,20 @@ router.post('/import', auth, authorize('admin', 'seller'), requirePermission('pr
           const rawStock = cell(row, 'stock');
           const parsedStock = Number.parseInt(rawStock, 10);
 
+          const rawImages = [
+            cell(row, 'image'),
+            cell(row, 'image2'),
+            cell(row, 'image3'),
+            cell(row, 'image4')
+          ].flatMap((value) => String(value || '').split(/[,;|]/));
+          const gallery = normalizeProductImages({
+            images: rawImages.map((value) => normalizeImageUrl(value, packedImages)).filter(Boolean)
+          });
+
+          const parent = await resolveCategory(cell(row, 'category'), categoryCache, createdCategories);
+          const child = parent
+            ? await resolveCategory(cell(row, 'subcategory'), categoryCache, createdCategories, parent.id)
+            : '';
           const payload = {
             reference: reference || null,
             name,
@@ -242,8 +261,10 @@ router.post('/import', auth, authorize('admin', 'seller'), requirePermission('pr
             description: cell(row, 'description') || null,
             price,
             cost_price: costPrice,
-            image_url: normalizeImageUrl(cell(row, 'image'), packedImages),
-            category: await resolveCategory(cell(row, 'category'), categoryCache, createdCategories)
+            image_url: gallery.image_url,
+            images: gallery.images,
+            category: parent ? parent.name : '',
+            subcategory: child ? child.name : null
           };
 
           // Ré-importer le même fichier met à jour les produits au lieu de les dupliquer.

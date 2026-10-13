@@ -307,7 +307,10 @@ router.put('/:id', auth, authorize('admin', 'seller'), async (req, res) => {
 router.get('/', auth, async (req, res, next) => {
   try {
     const where = {};
-    if (req.user.role === 'client') {
+    const mine = req.query.mine === '1' || req.query.mine === 'true';
+    // Profil « Mes commandes » : uniquement les achats du compte connecté,
+    // même pour un admin / employé (sinon ils voient tout le magasin).
+    if (req.user.role === 'client' || mine) {
       where.user_id = req.user.id;
     }
     if (req.query.status && ALLOWED_STATUSES.includes(String(req.query.status))) {

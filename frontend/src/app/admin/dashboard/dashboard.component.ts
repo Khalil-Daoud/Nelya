@@ -7,6 +7,7 @@ import { RouterLink } from '@angular/router';
 import { CrudService } from '../../services/crud.service';
 import { ApiService } from '../../services/api.service';
 import { SettingsService } from '../../services/settings.service';
+import { BrandService } from '../../services/brand.service';
 import { FormatCurrencyPipe } from '../../pipes/format-currency.pipe';
 import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
@@ -60,7 +61,7 @@ const PERIODS: Period[] = [
       <div class="header">
         <div class="header-text">
           <h1 class="luxury-title">Vue d'ensemble</h1>
-          <p>Bienvenue dans votre centre de pilotage NELYA.</p>
+          <p>Bienvenue dans votre centre de pilotage {{ brand.name }}.</p>
         </div>
 
         <div class="period-filter" role="group" aria-label="Filtrer par période">
@@ -397,7 +398,8 @@ export class DashboardComponent implements OnInit {
   constructor(
     private crud: CrudService,
     private api: ApiService,
-    private settings: SettingsService
+    private settings: SettingsService,
+    public brand: BrandService
   ) {}
 
   get periodLabel(): string {
